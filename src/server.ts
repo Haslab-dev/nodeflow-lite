@@ -97,13 +97,44 @@ const addInfoLog = (message: string) => {
   });
 };
 
+// Track node execution with minimum display time
+let nodeExecutionStartTime: number = 0;
+const MIN_INDICATOR_DISPLAY_MS = 800; // Minimum time to show indicator (800ms)
+
+// Track node execution start - set the executing node ID
+engine.on('nodeStart', (nodeId: string, nodeName: string, nodeType: string) => {
+  currentExecutingNodeId = nodeId;
+  nodeExecutionStartTime = Date.now();
+});
+
+// Track node execution complete - clear the executing node ID with minimum display time
+engine.on('nodeComplete', (nodeId: string, nodeName: string, nodeType: string) => {
+  // Only clear if this is the currently executing node
+  if (currentExecutingNodeId === nodeId) {
+    const elapsed = Date.now() - nodeExecutionStartTime;
+    const remainingTime = Math.max(0, MIN_INDICATOR_DISPLAY_MS - elapsed);
+    
+    // If node completed too fast, keep indicator visible for minimum time
+    if (remainingTime > 0) {
+      setTimeout(() => {
+        if (currentExecutingNodeId === nodeId) {
+          currentExecutingNodeId = null;
+        }
+      }, remainingTime);
+    } else {
+      currentExecutingNodeId = null;
+    }
+  }
+});
+
 engine.on('log', (msg: string) => {
   // Check if this is an execution start message
   const execMatch = msg.match(/^▶️\s+Executing:\s+(.+?)\s+\[(.+?)\]$/);
   if (execMatch && execMatch[1] && execMatch[2]) {
     const nodeName = execMatch[1];
     const nodeType = execMatch[2];
-    // Only track debug nodes for combining
+    
+    // Only track debug nodes for combining output
     if (nodeType === 'debug') {
       pendingExecution = { nodeName, timestamp: new Date().toLocaleTimeString() };
       return; // Don't log this, wait for the output
@@ -158,6 +189,7 @@ codeEngine.on('workflowCompleted', (workflowId: string, ctx: any) => {
 });
 
 let deployedWorkflow: WorkflowDefinition | null = null;
+let currentExecutingNodeId: string | null = null;
 
 const apiHandlers = {
   // Authentication endpoints
@@ -304,7 +336,8 @@ const apiHandlers = {
       http: httpInService.isRunning(),
       mqtt: mqttBroker.isRunning(),
       mqttClients: mqttBroker.getClientCount(),
-      deployed: deployedWorkflow !== null
+      deployed: deployedWorkflow !== null,
+      executingNodeId: currentExecutingNodeId
     };
   },
 

@@ -1,13 +1,17 @@
+import { useState, useEffect } from 'react';
 import { nodeDefinitionMap } from '../../nodes/node-definitions.ts';
 import type { NodeConfig } from '../../types/index.ts';
+import Editor from '@monaco-editor/react';
 import { 
   IconPencil, 
   IconCode, 
-  IconInfoCircle, 
-  IconBook, 
   IconX, 
-  IconPackage 
+  IconPackage,
+  IconRobot,
+  IconPlus,
+  IconTrash
 } from '@tabler/icons-react';
+import { getAIConfigs, saveAIConfig, deleteAIConfig, AI_PRESETS, type AIConfig, type AIProvider } from '../utils/ai-config';
 
 interface NodeConfigPanelProps {
   node: NodeConfig | null;
@@ -16,6 +20,21 @@ interface NodeConfigPanelProps {
 }
 
 export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
+  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([]);
+  const [showNewAIConfig, setShowNewAIConfig] = useState(false);
+  const [newAIConfig, setNewAIConfig] = useState<{ name: string; provider: AIProvider; baseUrl: string; apiKey: string; model: string }>({ 
+    name: '', 
+    provider: 'openai-compatible',
+    baseUrl: '', 
+    apiKey: '', 
+    model: '' 
+  });
+  const [selectedPreset, setSelectedPreset] = useState('');
+
+  useEffect(() => {
+    setAiConfigs(getAIConfigs());
+  }, []);
+
   if (!node) return null;
 
   const nodeDef = nodeDefinitionMap.get(node.type);
@@ -24,6 +43,38 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
 
   const handleChange = (fieldName: string, value: any) => {
     onUpdate(node.id, { ...node.config, [fieldName]: value });
+  };
+
+  const handleSaveAIConfig = () => {
+    if (!newAIConfig.name || !newAIConfig.apiKey || !newAIConfig.model) return;
+    const saved = saveAIConfig(newAIConfig);
+    setAiConfigs([...aiConfigs, saved]);
+    handleChange('aiConfig', saved);
+    setShowNewAIConfig(false);
+    setNewAIConfig({ name: '', provider: 'openai-compatible', baseUrl: '', apiKey: '', model: '' });
+    setSelectedPreset('');
+  };
+
+  const handleDeleteAIConfig = (id: string) => {
+    deleteAIConfig(id);
+    setAiConfigs(aiConfigs.filter(c => c.id !== id));
+    if (node.config.aiConfig?.id === id) {
+      handleChange('aiConfig', null);
+    }
+  };
+
+  const handlePresetChange = (presetName: string) => {
+    setSelectedPreset(presetName);
+    const preset = AI_PRESETS.find(p => p.name === presetName);
+    if (preset) {
+      setNewAIConfig(prev => ({ 
+        ...prev, 
+        name: preset.name, 
+        provider: preset.provider,
+        baseUrl: preset.baseUrl, 
+        model: preset.model 
+      }));
+    }
   };
 
   return (
@@ -62,32 +113,32 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
       </div>
 
       {/* Configuration Form - Scrollable */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin pl-4 pr-8 py-4 pb-20 space-y-5">
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 pb-20 space-y-3">
         {/* Name Field */}
-        <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-100">
-          <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-            <IconPencil size={16} className="text-blue-600" />
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-3 rounded-lg border border-blue-100">
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <IconPencil size={12} className="text-blue-600" />
             Node Name
           </label>
           <input
             type="text"
             value={node.name}
             onChange={(e) => onUpdate(node.id, { ...node.config, _name: e.target.value })}
-            className="input input-md shadow-sm"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Enter node name..."
           />
         </div>
 
         {/* Dynamic Fields */}
         {fields.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+              <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
               Configuration
             </div>
             {fields.map(field => (
-              <div key={field.name} className="bg-white p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                <label className="block text-sm font-semibold text-gray-800 mb-2">
+              <div key={field.name} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                   {field.label}
                 </label>
             
@@ -96,7 +147,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 type="text"
                 value={node.config[field.name] ?? field.default ?? ''}
                 onChange={(e) => handleChange(field.name, e.target.value)}
-                className="input input-md"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder={`Enter ${field.label.toLowerCase()}...`}
               />
             )}
@@ -106,7 +157,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 type="number"
                 value={node.config[field.name] ?? field.default ?? 0}
                 onChange={(e) => handleChange(field.name, Number(e.target.value))}
-                className="input input-md"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder={`Enter ${field.label.toLowerCase()}...`}
               />
             )}
@@ -115,7 +166,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
               <select
                 value={node.config[field.name] ?? field.default ?? ''}
                 onChange={(e) => handleChange(field.name, e.target.value)}
-                className="input input-md"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
                 <option value="">Select an option...</option>
                 {field.options?.map(opt => (
@@ -125,67 +176,199 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
             )}
             
             {field.type === 'code' && (
-              <div className="relative">
-                <textarea
-                  value={node.config[field.name] ?? field.default ?? ''}
-                  onChange={(e) => handleChange(field.name, e.target.value)}
-                  className="input input-md font-mono min-h-[140px] resize-y bg-gray-900 text-gray-100 border-gray-700 focus:border-blue-500"
-                  placeholder={`Enter ${field.label.toLowerCase()}...`}
-                  spellCheck={false}
-                />
-                <div className="absolute top-2 right-2 text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded border border-gray-700 flex items-center gap-1">
-                  <IconCode size={12} /> Code
+              <div 
+                className="relative border border-gray-300 rounded-md overflow-hidden"
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <div className="absolute top-1 right-1 z-10 text-[10px] text-gray-400 bg-gray-800/80 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  <IconCode size={10} /> {field.language?.toUpperCase() || 'TEXT'}
                 </div>
+                <Editor
+                  height="400px"
+                  language={field.language === 'text' ? 'plaintext' : (field.language || 'javascript')}
+                  value={(() => {
+                    const val = node.config[field.name] ?? field.default ?? '';
+                    if (typeof val === 'object' && val !== null) {
+                      return JSON.stringify(val, null, 2);
+                    }
+                    return String(val);
+                  })()}
+                  onChange={(value) => handleChange(field.name, value || '')}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 12,
+                    lineNumbers: field.language === 'text' ? 'off' : 'on',
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    tabSize: 2,
+                    automaticLayout: true,
+                    formatOnPaste: true,
+                    formatOnType: true,
+                    padding: { top: 8, bottom: 8 },
+                    // Prevent ReactFlow from capturing keyboard events
+                    overviewRulerLanes: 0,
+                  }}
+                  onMount={(editor) => {
+                    // Ensure the editor captures all keyboard events
+                    editor.onKeyDown((e) => {
+                      e.stopPropagation();
+                    });
+                  }}
+                />
               </div>
             )}
             
             {field.type === 'boolean' && (
-              <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border-2 border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all">
+              <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all">
                 <input
                   type="checkbox"
                   checked={node.config[field.name] ?? field.default ?? false}
                   onChange={(e) => handleChange(field.name, e.target.checked)}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-sm text-gray-700">
                   {field.label}
                 </span>
               </label>
+            )}
+
+            {field.type === 'ai-config' && (
+              <div className="space-y-2">
+                {/* Saved configs dropdown */}
+                <select
+                  value={node.config[field.name]?.id || ''}
+                  onChange={(e) => {
+                    const config = aiConfigs.find(c => c.id === e.target.value);
+                    handleChange(field.name, config || null);
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                >
+                  <option value="">Select AI configuration...</option>
+                  {aiConfigs.map(config => (
+                    <option key={config.id} value={config.id}>
+                      {config.name} ({config.model})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Selected config info */}
+                {node.config[field.name] && (
+                  <div className="p-2 bg-emerald-50 rounded-md border border-emerald-200 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-emerald-700">
+                        <IconRobot size={12} className="inline mr-1" />
+                        {node.config[field.name].name}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteAIConfig(node.config[field.name].id)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Delete this config"
+                      >
+                        <IconTrash size={12} />
+                      </button>
+                    </div>
+                    <div className="text-gray-500 mt-1">
+                      <span className="bg-emerald-100 px-1 rounded">{node.config[field.name].provider || 'openai-compatible'}</span> • {node.config[field.name].model}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add new config button */}
+                {!showNewAIConfig && (
+                  <button
+                    onClick={() => setShowNewAIConfig(true)}
+                    className="w-full px-3 py-2 text-xs border border-dashed border-gray-300 rounded-md text-gray-500 hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <IconPlus size={12} /> Add New AI Config
+                  </button>
+                )}
+
+                {/* New config form */}
+                {showNewAIConfig && (
+                  <div className="p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-700">New AI Configuration</span>
+                      <button onClick={() => setShowNewAIConfig(false)} className="text-gray-400 hover:text-gray-600">
+                        <IconX size={14} />
+                      </button>
+                    </div>
+                    
+                    {/* Preset selector */}
+                    <select
+                      value={selectedPreset}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+                    >
+                      <option value="">Use preset...</option>
+                      {AI_PRESETS.map(p => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Config Name"
+                      value={newAIConfig.name}
+                      onChange={(e) => setNewAIConfig(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    {/* Only show baseUrl for openai-compatible and zhipu */}
+                    {(newAIConfig.provider === 'openai-compatible' || newAIConfig.provider === 'zhipu') && (
+                      <input
+                        type="text"
+                        placeholder="Base URL (e.g., https://api.openai.com/v1)"
+                        value={newAIConfig.baseUrl}
+                        onChange={(e) => setNewAIConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                      />
+                    )}
+                    <input
+                      type="password"
+                      placeholder="API Key"
+                      value={newAIConfig.apiKey}
+                      onChange={(e) => setNewAIConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Model (e.g., gpt-4o-mini)"
+                      value={newAIConfig.model}
+                      onChange={(e) => setNewAIConfig(prev => ({ ...prev, model: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <button
+                      onClick={handleSaveAIConfig}
+                      disabled={!newAIConfig.name || !newAIConfig.apiKey || !newAIConfig.model}
+                      className="w-full px-3 py-1.5 text-xs bg-emerald-500 text-white rounded hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save & Use
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Node Information */}
-        <div className="pt-4 border-t-2 border-gray-200">
-          <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-            <IconInfoCircle size={16} className="text-blue-600" />
-            Node Information
-          </h4>
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-              <span className="text-gray-600 font-medium">Node ID:</span>
-              <span className="font-mono text-gray-800 bg-white px-2 py-1 rounded border border-gray-200">{node.id}</span>
-            </div>
-            <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-              <span className="text-gray-600 font-medium">Type:</span>
-              <span className="font-mono text-gray-800 bg-white px-2 py-1 rounded border border-gray-200">{node.type}</span>
-            </div>
-            <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-              <span className="text-gray-600 font-medium">Category:</span>
-              <span className="text-gray-800 capitalize bg-white px-2 py-1 rounded border border-gray-200">{nodeDef?.category || 'unknown'}</span>
-            </div>
-            {nodeDef?.description && (
-              <div className="mt-3 p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border border-blue-100">
-                <div className="text-gray-600 font-semibold mb-2 flex items-center gap-1">
-                  <IconBook size={14} />
-                  Description:
-                </div>
-                <div className="text-gray-700 leading-relaxed">{nodeDef.description}</div>
-              </div>
-            )}
+        {/* Node Information - Compact */}
+        <div className="pt-3 border-t border-gray-200">
+          <div className="flex flex-wrap gap-2 text-[10px]">
+            <span className="px-2 py-1 bg-gray-100 rounded text-gray-600">
+              <span className="font-medium">ID:</span> <span className="font-mono">{node.id}</span>
+            </span>
+            <span className="px-2 py-1 bg-gray-100 rounded text-gray-600">
+              <span className="font-medium">Type:</span> <span className="font-mono">{node.type}</span>
+            </span>
+            <span className="px-2 py-1 bg-gray-100 rounded text-gray-600 capitalize">
+              <span className="font-medium">Cat:</span> {nodeDef?.category || 'unknown'}
+            </span>
           </div>
+          {nodeDef?.description && (
+            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">{nodeDef.description}</p>
+          )}
         </div>
       </div>
     </div>

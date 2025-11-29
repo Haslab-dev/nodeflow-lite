@@ -11,26 +11,28 @@ interface LogPanelProps {
   onClearDebug: () => void;
 }
 
-export function LogPanel({ infoLogs, debugLogs, onClearInfo, onClearDebug }: LogPanelProps) {
+export function LogPanel({ infoLogs = [], debugLogs = [], onClearInfo, onClearDebug }: LogPanelProps) {
   const infoContainerRef = useRef<HTMLDivElement>(null);
   const debugContainerRef = useRef<HTMLDivElement>(null);
-  const prevInfoLengthRef = useRef(infoLogs.length);
-  const prevDebugLengthRef = useRef(debugLogs.length);
+  const prevInfoLengthRef = useRef(infoLogs?.length ?? 0);
+  const prevDebugLengthRef = useRef(debugLogs?.length ?? 0);
 
   useEffect(() => {
     // Only auto-scroll if new logs were added
-    if (infoContainerRef.current && infoLogs.length > prevInfoLengthRef.current) {
+    const currentLength = infoLogs?.length ?? 0;
+    if (infoContainerRef.current && currentLength > prevInfoLengthRef.current) {
       infoContainerRef.current.scrollTop = infoContainerRef.current.scrollHeight;
     }
-    prevInfoLengthRef.current = infoLogs.length;
+    prevInfoLengthRef.current = currentLength;
   }, [infoLogs]);
 
   useEffect(() => {
     // Only auto-scroll if new logs were added
-    if (debugContainerRef.current && debugLogs.length > prevDebugLengthRef.current) {
+    const currentLength = debugLogs?.length ?? 0;
+    if (debugContainerRef.current && currentLength > prevDebugLengthRef.current) {
       debugContainerRef.current.scrollTop = debugContainerRef.current.scrollHeight;
     }
-    prevDebugLengthRef.current = debugLogs.length;
+    prevDebugLengthRef.current = currentLength;
   }, [debugLogs]);
 
   return (

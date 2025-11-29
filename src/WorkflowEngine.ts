@@ -105,6 +105,8 @@ export class WorkflowEngine extends EventEmitter {
       return;
     }
 
+    // Emit node execution start event
+    this.emit('nodeStart', node.id, node.name, node.type);
     this.log(`▶️  Executing: ${node.name} [${node.type}]`);
 
     // Collect all send promises to await them
@@ -126,6 +128,9 @@ export class WorkflowEngine extends EventEmitter {
       await Promise.all(sendPromises);
     } catch (error) {
       context.error('Node execution failed', error as Error);
+    } finally {
+      // Emit node execution complete event
+      this.emit('nodeComplete', node.id, node.name, node.type);
     }
   }
 

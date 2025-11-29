@@ -4,23 +4,17 @@ import { nodeDefinitionMap } from '../../nodes/node-definitions.ts';
 import { 
   IconWorld, 
   IconDeviceAnalytics, 
-  IconDatabase, 
   IconCode, 
   IconBug,
   IconClock,
   IconFilter,
   IconSwitchHorizontal,
   IconServer,
-  IconMail,
-  IconBrandSlack,
-  IconFileText,
-  IconRepeat,
   IconTransform,
   IconTemplate,
-  IconShieldLock,
-  IconJson,
   IconPlayerPlay,
-  IconX
+  IconX,
+  IconRobot
 } from '@tabler/icons-react';
 
 interface WorkflowNodeProps {
@@ -32,6 +26,7 @@ interface WorkflowNodeProps {
     onInject?: (nodeId: string) => void;
     onDelete?: (nodeId: string) => void;
     isDeployed?: boolean;
+    isExecuting?: boolean;
   };
   selected?: boolean;
 }
@@ -40,40 +35,26 @@ interface WorkflowNodeProps {
 const nodeIcons: Record<string, React.ReactNode> = {
   'http-in': <IconWorld size={16} />,
   'mqtt-in': <IconDeviceAnalytics size={16} />,
-  'cron': <IconClock size={16} />,
-  'webhook': <IconWorld size={16} />,
-  'file-watch': <IconFileText size={16} />,
   
   'debug': <IconBug size={16} />,
   'http-response': <IconWorld size={16} />,
   'mqtt-out': <IconDeviceAnalytics size={16} />,
-  'email': <IconMail size={16} />,
-  'slack': <IconBrandSlack size={16} />,
-  'file-write': <IconFileText size={16} />,
   
   'function': <IconCode size={16} />,
   'filter': <IconFilter size={16} />,
-  'switch': <IconSwitchHorizontal size={16} />,
   'transform': <IconTransform size={16} />,
   'template': <IconTemplate size={16} />,
-  'loop': <IconRepeat size={16} />,
-  'try-catch': <IconShieldLock size={16} />,
   
   'http-request': <IconWorld size={16} />,
-  'db-insert': <IconDatabase size={16} />,
-  'db-query': <IconDatabase size={16} />,
-  'db-update': <IconDatabase size={16} />,
-  'db-delete': <IconDatabase size={16} />,
   'delay': <IconClock size={16} />,
   'split': <IconSwitchHorizontal size={16} />,
   'join': <IconSwitchHorizontal size={16} />,
-  'aggregate': <IconDeviceAnalytics size={16} />,
-  'cache': <IconDatabase size={16} />,
-  'json-parse': <IconJson size={16} />,
-  'json-stringify': <IconJson size={16} />,
   
   'inject': <IconPlayerPlay size={16} />,
   'trigger': <IconPlayerPlay size={16} />,
+  
+  // AI node
+  'ai-generate': <IconRobot size={16} />,
 };
 
 function WorkflowNode({ id, data, selected }: WorkflowNodeProps) {
@@ -101,12 +82,14 @@ function WorkflowNode({ id, data, selected }: WorkflowNodeProps) {
 
   return (
     <div
-      className={`relative group bg-white rounded-lg shadow-sm transition-all duration-200 border ${
-        selected 
-          ? 'border-blue-500 ring-2 ring-blue-100' 
-          : data.isDeployed 
-            ? 'border-green-500 animate-border-pulse' 
-            : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+      className={`relative group bg-white rounded-lg shadow-sm transition-all duration-200 border-2 ${
+        data.isExecuting
+          ? 'border-orange-500 animate-executing-pulse shadow-lg shadow-orange-200'
+          : selected 
+            ? 'border-blue-500 ring-2 ring-blue-100' 
+            : data.isDeployed 
+              ? 'border-green-500 animate-border-pulse' 
+              : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
       }`}
       style={{
         minWidth: 140,

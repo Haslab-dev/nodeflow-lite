@@ -403,6 +403,26 @@ body {
   animation: border-pulse 2s infinite;
 }
 
+/* Fast pulsing animation for executing nodes */
+@keyframes executing-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.6), 0 4px 6px -1px rgba(249, 115, 22, 0.2);
+    border-color: rgb(249, 115, 22);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 4px 6px -1px rgba(249, 115, 22, 0.3);
+    border-color: rgb(234, 88, 12);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.6), 0 4px 6px -1px rgba(249, 115, 22, 0.2);
+    border-color: rgb(249, 115, 22);
+  }
+}
+
+.animate-executing-pulse {
+  animation: executing-pulse 0.5s ease-in-out infinite;
+}
+
 /* Custom React Flow overrides */
 .react-flow__node {
   border-radius: var(--radius-xl) !important;

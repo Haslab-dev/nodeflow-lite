@@ -1,9 +1,24 @@
 import type { WorkflowMessage, NodeExecutionContext, NodeExecutor } from "../types/index.ts";
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { createZhipu } from 'zhipu-ai-provider';
+import { generateText } from 'ai';
 
 export function registerBuiltInNodes(engine: { registerNodeType: (type: string, executor: NodeExecutor) => void }) {
   // TRIGGER/INJECT NODE
   engine.registerNodeType('inject', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
-    const data = ctx.node.config.payload || msg.payload;
+    let data = ctx.node.config.payload || msg.payload;
+    
+    // Parse payload if it's a JSON string
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        // If parsing fails, keep as string
+      }
+    }
+    
     ctx.log(`Injecting: ${JSON.stringify(data)}`);
     ctx.send({ payload: data });
   });
@@ -162,33 +177,95 @@ export function registerBuiltInNodes(engine: { registerNodeType: (type: string, 
     }
   });
 
-  // AGGREGATE NODE
-  engine.registerNodeType('aggregate', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
-    const { operation = 'sum', field } = ctx.node.config;
-    const data = Array.isArray(msg.payload) ? msg.payload : [msg.payload];
+  // AI GENERATE NODE - Using AI SDK with multiple providers
+  engine.registerNodeType('ai-generate', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
+    const { aiConfig, prompt, temperature = 0.7 } = ctx.node.config;
     
-    let result: any;
-    
-    switch (operation) {
-      case 'sum':
-        result = data.reduce((acc, item) => acc + (item[field] || item), 0);
-        break;
-      case 'avg':
-        const sum = data.reduce((acc, item) => acc + (item[field] || item), 0);
-        result = sum / data.length;
-        break;
-      case 'count':
-        result = data.length;
-        break;
-      case 'min':
-        result = Math.min(...data.map(item => item[field] || item));
-        break;
-      case 'max':
-        result = Math.max(...data.map(item => item[field] || item));
-        break;
+    if (!aiConfig) {
+      ctx.error('AI configuration not set');
+      ctx.send({ ...msg, error: 'AI configuration not set' });
+      return;
     }
-    
-    ctx.log(`${operation}: ${result}`);
-    ctx.send({ payload: result });
+
+    // Process template in prompt
+    let processedPrompt = prompt.replace(/\{\{(.+?)\}\}/g, (_match: string, path: string) => {
+      const keys = path.trim().split('.');
+      let value: any = msg;
+      for (const key of keys) {
+        value = value?.[key];
+      }
+      return value !== undefined ? String(value) : '';
+    });
+
+    ctx.log(`🤖 Prompt: "${processedPrompt.length > 100 ? processedPrompt.substring(0, 100) + '...' : processedPrompt}"`);
+
+    try {
+      // Create provider based on type and call generateText
+      const providerType = aiConfig.provider || 'openai-compatible';
+      let result: { text: string; usage?: any };
+      
+      switch (providerType) {
+        case 'deepseek': {
+          const deepseek = createDeepSeek({ apiKey: aiConfig.apiKey });
+          result = await generateText({
+            model: deepseek(aiConfig.model),
+            prompt: processedPrompt,
+            temperature,
+          });
+          break;
+        }
+        case 'openrouter': {
+          const openrouter = createOpenRouter({ apiKey: aiConfig.apiKey });
+          result = await generateText({
+            model: openrouter.chat(aiConfig.model),
+            prompt: processedPrompt,
+            temperature,
+          });
+          break;
+        }
+        case 'zhipu': {
+          const zhipu = createZhipu({ 
+            apiKey: aiConfig.apiKey,
+            baseURL: aiConfig.baseUrl 
+          });
+          result = await generateText({
+            model: zhipu(aiConfig.model) as any,
+            prompt: processedPrompt,
+            temperature,
+          });
+          break;
+        }
+        case 'openai-compatible':
+        default: {
+          const provider = createOpenAICompatible({
+            name: aiConfig.name || 'custom-provider',
+            apiKey: aiConfig.apiKey,
+            baseURL: aiConfig.baseUrl,
+          });
+          result = await generateText({
+            model: provider(aiConfig.model),
+            prompt: processedPrompt,
+            temperature,
+          });
+          break;
+        }
+      }
+
+      const { text, usage } = result;
+
+      ctx.log(`✓ Response: "${text.substring(0, 100)}..."`);
+      
+      ctx.send({
+        payload: {
+          ...msg.payload,
+          response: text,
+          usage
+        }
+      });
+    } catch (error) {
+      ctx.error('AI Generate failed', error as Error);
+      ctx.send({ ...msg, error: (error as Error).message });
+    }
   });
+
 }

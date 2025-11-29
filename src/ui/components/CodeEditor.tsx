@@ -61,9 +61,16 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
     useEffect(() => {
       if (workflow) {
-        // For programmatic workflows, we need to handle the code structure differently
-        if (workflow.type === 'code' || (workflow as any).triggers) {
-          // Show the programmatic workflow structure with code in the proper format
+        // Check if this is a code workflow
+        const isCodeWorkflow = workflow.type === 'code' || (workflow as any).triggers;
+        
+        // Check if this is a pre-defined example (has actual function implementations)
+        const isPreDefinedExample = isCodeWorkflow && (workflow as any).steps?.some((step: any) => 
+          typeof step.run === 'function'
+        );
+        
+        if (isCodeWorkflow && isPreDefinedExample) {
+          // For pre-defined examples, show the TypeScript-like format (read-only)
           const codeWorkflow = (workflow as any).codeWorkflow || workflow;
           if (codeWorkflow) {
             let finalCode = `// Code Workflow: ${codeWorkflow.name}\n`;
@@ -89,6 +96,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
             setCode(JSON.stringify(workflow, null, 2));
           }
         } else {
+          // For user-created workflows (both visual and code), show JSON format (editable)
           setCode(JSON.stringify(workflow, null, 2));
         }
         setError(null);
@@ -102,12 +110,18 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const handleEditorChange = (value: string | undefined) => {
       if (value !== undefined) {
         setCode(value);
-        // Validate JSON in real-time
+        // Validate JSON in real-time (for editable workflows)
         try {
           JSON.parse(value);
           setError(null);
         } catch (e) {
-          setError((e as Error).message);
+          // Only show error if it looks like JSON (starts with { or [)
+          const trimmed = value.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            setError((e as Error).message);
+          } else {
+            setError(null);
+          }
         }
       }
     };
@@ -180,29 +194,46 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
     // Determine if this is a code workflow (TypeScript) or regular workflow (JSON)
     const isCodeWorkflow = workflow.type === 'code' || (workflow as any).triggers;
+    
+    // Check if this is a pre-defined example (has actual function implementations)
+    // Pre-defined examples have steps with actual 'run' functions, not strings
+    const isPreDefinedExample = isCodeWorkflow && (workflow as any).steps?.some((step: any) => 
+      typeof step.run === 'function'
+    );
+    
     const editorLanguage = isCodeWorkflow ? 'typescript' : 'json';
 
     const editorContent = (
       <div className="h-full flex flex-col bg-white">
         {/* Error Display */}
-        {error && !isCodeWorkflow && (
+        {error && (
           <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start gap-2">
               <IconAlertCircle className="text-red-500 w-4 h-4 shrink-0 mt-0.5" />
               <div>
-                <div className="text-red-800 font-medium text-xs">JSON Error</div>
+                <div className="text-red-800 font-medium text-xs">Error</div>
                 <div className="text-red-600 text-xs mt-0.5">{error}</div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Read-only notice for code workflows */}
-        {isCodeWorkflow && (
+        {/* Read-only notice for pre-defined example workflows only */}
+        {isPreDefinedExample && (
           <div className="mx-4 mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-            <div className="text-purple-800 font-medium text-xs">Code Workflow (Read-only)</div>
+            <div className="text-purple-800 font-medium text-xs">Pre-defined Example (Read-only)</div>
             <div className="text-purple-600 text-xs mt-0.5">
-              This is a pre-defined code workflow. Click Run to execute it.
+              This is a pre-defined code workflow with function implementations. Click Run to execute it.
+            </div>
+          </div>
+        )}
+
+        {/* Editable notice for user-created code workflows */}
+        {isCodeWorkflow && !isPreDefinedExample && (
+          <div className="mx-4 mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="text-blue-800 font-medium text-xs">Code Workflow (Editable)</div>
+            <div className="text-blue-600 text-xs mt-0.5">
+              Edit the workflow structure below. Click Save to persist changes.
             </div>
           </div>
         )}
@@ -213,7 +244,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
             height="100%"
             language={editorLanguage}
             value={code}
-            onChange={isCodeWorkflow ? undefined : handleEditorChange}
+            onChange={isPreDefinedExample ? undefined : handleEditorChange}
             onMount={handleEditorDidMount}
             theme="vs-dark"
             options={{
@@ -224,12 +255,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
-              formatOnPaste: !isCodeWorkflow,
-              formatOnType: !isCodeWorkflow,
+              formatOnPaste: !isPreDefinedExample,
+              formatOnType: !isPreDefinedExample,
               wordWrap: 'on',
               folding: true,
               bracketPairColorization: { enabled: true },
-              readOnly: isCodeWorkflow,
+              readOnly: isPreDefinedExample,
               suggest: {
                 showKeywords: true,
               },

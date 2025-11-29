@@ -20,10 +20,16 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@ai-sdk/deepseek": "^1.0.30",
+    "@ai-sdk/openai": "^2.0.74",
+    "@ai-sdk/openai-compatible": "^1.0.28",
     "@monaco-editor/react": "^4.6.0",
+    "@openrouter/ai-sdk-provider": "^1.2.8",
     "@tabler/icons-react": "^3.35.0",
     "@xyflow/react": "^12.9.3",
+    "ai": "^5.0.104",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zhipu-ai-provider": "^0.1.1"
   }
 }

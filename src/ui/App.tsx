@@ -13,7 +13,7 @@ import {
   type BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconCode, IconLogin } from '@tabler/icons-react';
+import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconPlayerStop, IconCode, IconLogin } from '@tabler/icons-react';
 
 import WorkflowNode from './components/WorkflowNode.tsx';
 import { NodeConfigPanel } from './components/NodeConfigPanel.tsx';
@@ -94,6 +94,7 @@ export default function App() {
   // UI state
   const [currentView, setCurrentView] = useState<'workflows' | 'programmatic'>('workflows');
   const [isRunning, setIsRunning] = useState(false);
+  const [executingNodeId, setExecutingNodeId] = useState<string | null>(null);
 
   useEffect(() => { saveProjects(projects); }, [projects]);
   
@@ -111,12 +112,16 @@ export default function App() {
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/status');
-        const status = await res.json() as { http: boolean; mqtt: boolean; mqttClients?: number; deployed?: boolean };
+        const status = await res.json() as { http: boolean; mqtt: boolean; mqttClients?: number; deployed?: boolean; executingNodeId?: string | null };
         setRuntimeStatus({ http: status.http, mqtt: status.mqtt, mqttClients: status.mqttClients || 0 });
+        // Update executing node for visual feedback
+        if (status.executingNodeId !== undefined) {
+          setExecutingNodeId(status.executingNodeId);
+        }
       } catch {}
     };
     fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+    const interval = setInterval(fetchStatus, 200); // Poll faster for real-time node execution feedback
     return () => clearInterval(interval);
   }, []);
 
@@ -257,7 +262,7 @@ export default function App() {
       id: n.id,
       type: 'workflow',
       position: n.position || { x: 100, y: 100 + i * 120 },
-      data: { label: n.name, type: n.type, config: n.config, onInject: triggerInject, isDeployed: false, onDelete: handleDeleteNode }
+      data: { label: n.name, type: n.type, config: n.config, onInject: triggerInject, isDeployed: false, onDelete: handleDeleteNode, isExecuting: false }
     }));
 
     const flowEdges: Edge[] = [];
@@ -281,13 +286,13 @@ export default function App() {
     nodeId = Math.max(...workflow.nodes.map(n => parseInt(n.id.replace(/\D/g, '')) || 0), 0) + 1;
   };
 
-  // Update nodes when deploy state changes
+  // Update nodes when deploy state or executing node changes
   useEffect(() => {
     setNodes(nds => nds.map(n => ({
       ...n,
-      data: { ...n.data, isDeployed, onInject: triggerInject, onDelete: handleDeleteNode }
+      data: { ...n.data, isDeployed, onInject: triggerInject, onDelete: handleDeleteNode, isExecuting: n.id === executingNodeId }
     })));
-  }, [isDeployed]); // triggerInject is stable (no deps)
+  }, [isDeployed, executingNodeId]); // triggerInject is stable (no deps)
 
   const buildWorkflow = (): WorkflowDefinition => {
     const workflowType = currentWorkflow?.type || 'flow';
@@ -321,15 +326,24 @@ export default function App() {
   };
 
   const saveCurrentWorkflow = () => {
-    if (!currentProject || !currentWorkflow) return;
+    if (!currentWorkflow) return;
     
-    // If in code mode, trigger the code editor save
+    // For programmatic/code workflows, trigger the code editor save
+    if (currentView === 'programmatic' && codeEditorRef.current) {
+      codeEditorRef.current.save();
+      return;
+    }
+    
+    // For visual workflows in code view mode
     if (viewMode === 'code' && codeEditorRef.current) {
       codeEditorRef.current.save();
       return;
     }
     
-    // Otherwise save from builder
+    // For visual workflows in builder mode - need a project
+    if (!currentProject) return;
+    
+    // Save from builder
     const updated = buildWorkflow();
     setProjects(prev => prev.map(p => p.id === currentProject.id 
       ? { ...p, workflows: p.workflows.map(w => w.id === currentWorkflow.id ? updated : w), updatedAt: Date.now() } 
@@ -517,6 +531,19 @@ export default function App() {
   const codeEditorRef = useRef<{ save: () => boolean; format: () => void } | null>(null);
 
   const handleCodeSave = (workflow: WorkflowDefinition) => {
+    // Check if this is a code workflow (programmatic view)
+    if (currentView === 'programmatic' || workflow.type === 'code') {
+      // For code workflows, just update the current workflow state
+      setCurrentWorkflow(workflow);
+      // Show success feedback
+      setDebugLogs(prev => [...prev, { 
+        timestamp: new Date().toLocaleTimeString(), 
+        message: `✅ Code workflow saved: ${workflow.name}` 
+      }]);
+      return;
+    }
+    
+    // For visual workflows, save to project
     if (!currentProject) return;
     setProjects(prev => prev.map(p => p.id === currentProject.id ? { ...p, workflows: p.workflows.map(w => w.id === workflow.id ? workflow : w), updatedAt: Date.now() } : p));
     setCurrentWorkflow(workflow);
@@ -534,7 +561,7 @@ export default function App() {
     const bounds = reactFlowWrapper.current.getBoundingClientRect();
     const position = { x: event.clientX - bounds.left - 60, y: event.clientY - bounds.top - 20 };
     const nodeDef = nodeDefinitionMap.get(type);
-    const newNode: FlowNode = { id: getId(), type: 'workflow', position, data: { label: nodeDef?.label || type, type, config: {}, onInject: triggerInject, isDeployed, onDelete: handleDeleteNode } };
+    const newNode: FlowNode = { id: getId(), type: 'workflow', position, data: { label: nodeDef?.label || type, type, config: {}, onInject: triggerInject, isDeployed, onDelete: handleDeleteNode, isExecuting: false } };
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes, isDeployed, triggerInject]);
 
@@ -785,37 +812,50 @@ export default function App() {
                   </button>
                 )}
                 
-                {/* Run button - deploys and triggers inject */}
-                <button
-                  onClick={async () => {
-                    setIsRunning(true);
-                    setRightSidebarVisible(true);
-                    setRightSidebarTab('debug');
-                    try {
-                      await deployWorkflow();
-                      await runWorkflow();
-                    } finally {
-                      setTimeout(() => setIsRunning(false), 1500);
-                    }
-                  }}
-                  disabled={isRunning}
-                  className={`btn btn-sm text-white border-transparent transition-all ${
-                    isRunning 
-                      ? 'bg-green-400 cursor-wait animate-pulse' 
-                      : 'bg-green-500 hover:bg-green-600'
-                  }`}
-                  title="Deploy and run workflow"
-                >
-                  {isRunning ? (
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                  ) : (
-                    <IconPlayerPlay size={16} />
-                  )}
-                  {isRunning ? 'Running...' : 'Run'}
-                </button>
+                {/* Run/Stop button - only for Visual Builder mode (deploy only, no auto-execute) */}
+                {viewMode === 'builder' && (
+                  <button
+                    onClick={async () => {
+                      if (isDeployed) {
+                        // Stop workflow - undeploy
+                        await undeployWorkflow();
+                        setIsRunning(false);
+                        setExecutingNodeId(null);
+                      } else {
+                        // Start workflow - deploy only (don't auto-execute)
+                        setIsRunning(true);
+                        setRightSidebarVisible(true);
+                        setRightSidebarTab('debug');
+                        try {
+                          await deployWorkflow();
+                          // Don't call runWorkflow() - let user trigger inject manually
+                        } finally {
+                          setIsRunning(false);
+                        }
+                      }
+                    }}
+                    className={`btn btn-sm text-white border-transparent transition-all ${
+                      isDeployed
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : isRunning
+                          ? 'bg-green-400 cursor-wait animate-pulse'
+                          : 'bg-green-500 hover:bg-green-600'
+                    }`}
+                    title={isDeployed ? 'Stop workflow' : 'Deploy workflow (click inject node to trigger)'}
+                  >
+                    {isRunning && !isDeployed ? (
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    ) : isDeployed ? (
+                      <IconPlayerStop size={16} />
+                    ) : (
+                      <IconPlayerPlay size={16} />
+                    )}
+                    {isRunning && !isDeployed ? 'Deploying...' : isDeployed ? 'Stop' : 'Run'}
+                  </button>
+                )}
                 
                 <button
                   onClick={saveCurrentWorkflow}

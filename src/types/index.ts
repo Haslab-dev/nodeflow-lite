@@ -50,7 +50,8 @@ export interface NodeTypeDefinition {
 export interface ConfigField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'code' | 'select';
+  type: 'string' | 'number' | 'boolean' | 'code' | 'select' | 'ai-config';
+  language?: 'javascript' | 'json' | 'markdown' | 'text'; // For code type
   options?: string[];
   default?: any;
 }
