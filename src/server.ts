@@ -3,6 +3,7 @@ import { WorkflowEngine } from "./WorkflowEngine.ts";
 import { CodeWorkflowEngine } from "./CodeWorkflowEngine.ts";
 import { HttpInService, registerRuntimeNodes, clearRuntimeSubscriptions } from "./nodes/runtime-nodes.ts";
 import { MqttBroker } from "./nodes/mqtt-broker.ts";
+import { WebSocketBroker } from "./nodes/websocket-broker.ts";
 import { authService } from "./auth/index.ts";
 import { db } from "./database/index.ts";
 import { programmaticWorkflowExamples } from "./workflows/programmatic-examples.ts";
@@ -10,6 +11,7 @@ import type { WorkflowDefinition, NodeConfig, ProgrammaticWorkflow } from "./typ
 
 const httpInService = new HttpInService(3001);
 const mqttBroker = new MqttBroker(1883);
+const wsBroker = new WebSocketBroker(1884);
 const engine = new WorkflowEngine();
 const codeEngine = new CodeWorkflowEngine();
 
@@ -22,7 +24,16 @@ const mqttServiceAdapter = {
   isRunning: () => mqttBroker.isRunning()
 };
 
-registerRuntimeNodes(engine, httpInService, mqttServiceAdapter as any);
+const wsServiceAdapter = {
+  subscribe: (topic: string, handler: any) => wsBroker.subscribe(topic, handler),
+  unsubscribe: (topic: string, handler: any) => wsBroker.unsubscribe(topic, handler),
+  publish: (topic: string, payload: any) => wsBroker.publish(topic, payload),
+  start: () => wsBroker.start(),
+  stop: () => wsBroker.stop(),
+  isRunning: () => wsBroker.isRunning()
+};
+
+registerRuntimeNodes(engine, httpInService, mqttServiceAdapter as any, wsServiceAdapter as any);
 
 // Initialize authentication and default admin user
 await authService.initializeDefaultAdmin();
@@ -89,6 +100,9 @@ interface LogEntry {
 const infoLogs: LogEntry[] = [];    // Execution info logs
 const debugLogs: LogEntry[] = [];   // Debug node output only
 let pendingExecution: { nodeName: string; timestamp: string } | null = null;
+
+// UI Dashboard data
+const uiWidgets: Map<string, any> = new Map();
 
 const addInfoLog = (message: string) => {
   infoLogs.push({
@@ -164,6 +178,11 @@ engine.on('log', (msg: string) => {
 engine.on('error', (msg: string) => {
   addInfoLog(`❌ ${msg}`);
   pendingExecution = null;
+});
+
+// Listen for UI updates from UI nodes
+engine.on('ui-update', (data: any) => {
+  uiWidgets.set(data.nodeId, data);
 });
 
 // Code workflow logging
@@ -319,6 +338,44 @@ const apiHandlers = {
     return { success: true };
   },
 
+  // Test a single node with input data
+  async testNode(workflow: WorkflowDefinition, nodeId: string, input: any) {
+    try {
+      // Clear logs before test to capture only this execution
+      const startInfoLength = infoLogs.length;
+      const startDebugLength = debugLogs.length;
+      
+      engine.loadWorkflow(workflow);
+      
+      // Extract payload from input if it exists, otherwise use input as payload
+      const payload = input.payload !== undefined ? input.payload : input;
+      
+      // Execute the node with the provided input
+      await engine.executeNodeById(workflow.id, nodeId, payload);
+      
+      // Wait a bit for execution to complete (longer for AI nodes)
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Collect all logs generated during this test
+      const newInfoLogs = infoLogs.slice(startInfoLength);
+      const newDebugLogs = debugLogs.slice(startDebugLength);
+      
+      // Combine all logs into output
+      const output = {
+        execution: newInfoLogs.map(l => l.message).join('\n'),
+        debug: newDebugLogs.map(l => l.message).join('\n'),
+        logs: [...newInfoLogs, ...newDebugLogs]
+      };
+      
+      return { 
+        success: true, 
+        output
+      };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
   // Legacy run - executes entire workflow
   async runWorkflow(workflow: WorkflowDefinition) {
     engine.loadWorkflow(workflow);
@@ -335,7 +392,9 @@ const apiHandlers = {
     return {
       http: httpInService.isRunning(),
       mqtt: mqttBroker.isRunning(),
+      ws: wsBroker.isRunning(),
       mqttClients: mqttBroker.getClientCount(),
+      wsClients: wsBroker.getClientCount(),
       deployed: deployedWorkflow !== null,
       executingNodeId: currentExecutingNodeId
     };
@@ -530,6 +589,17 @@ Bun.serve({
         return Response.json(result);
       }
     },
+
+    "/api/workflow/test-node": {
+      POST: async (req: any) => {
+        const authResult = await checkAuth(req);
+        if (authResult.response) return authResult.response;
+
+        const { workflow, nodeId, input } = await req.json() as { workflow: WorkflowDefinition; nodeId: string; input: any };
+        const result = await apiHandlers.testNode(workflow, nodeId, input);
+        return Response.json(result);
+      }
+    },
     
     "/api/workflow/run": {
       POST: async (req: any) => {
@@ -589,6 +659,63 @@ Bun.serve({
         const result = apiHandlers.getStatus();
         return Response.json(result);
       }
+    },
+    
+    "/api/ui-data": {
+      GET: async () => {
+        // Return UI dashboard data
+        const widgets: Record<string, any> = {};
+        uiWidgets.forEach((value, key) => {
+          widgets[key] = value;
+        });
+        return Response.json({ widgets });
+      },
+      
+      DELETE: async (req: any) => {
+        const authResult = await checkAuth(req);
+        if (authResult.response) return authResult.response;
+        
+        uiWidgets.clear();
+        return Response.json({ success: true });
+      }
+    },
+
+    "/api/conversations": {
+      GET: async () => {
+        // Get all conversations
+        const { AIMemoryManager } = await import('./nodes/ai-memory.ts');
+        const ids = AIMemoryManager.getAllConversationIds();
+        const conversations = ids.map(id => ({
+          id,
+          ...AIMemoryManager.getConversationInfo(id)
+        }));
+        return Response.json({ conversations });
+      }
+    },
+
+    "/api/conversations/:id": {
+      GET: async (req: any, params: any) => {
+        // Get conversation history
+        const { AIMemoryManager } = await import('./nodes/ai-memory.ts');
+        const history = AIMemoryManager.getHistory(params.id);
+        return Response.json({ history });
+      },
+      
+      DELETE: async (req: any, params: any) => {
+        // Clear conversation
+        const { AIMemoryManager } = await import('./nodes/ai-memory.ts');
+        AIMemoryManager.clearConversation(params.id);
+        return Response.json({ success: true });
+      }
+    },
+
+    "/api/memory/stats": {
+      GET: async () => {
+        // Get memory statistics
+        const { AIMemoryManager } = await import('./nodes/ai-memory.ts');
+        const stats = AIMemoryManager.getStats();
+        return Response.json(stats);
+      }
     }
   },
   
@@ -602,7 +729,8 @@ console.log("🚀 NodeFlow server running at http://localhost:3000");
   try {
     await httpInService.start();
     await mqttBroker.start();
-    console.log("✅ HTTP and MQTT services started automatically");
+    await wsBroker.start();
+    console.log("✅ HTTP, MQTT, and WebSocket services started automatically");
   } catch (err) {
     console.error("❌ Failed to start services:", err);
   }

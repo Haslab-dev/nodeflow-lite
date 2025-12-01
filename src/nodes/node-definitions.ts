@@ -49,6 +49,20 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     icon: '📶',
     description: 'Subscribe to MQTT topics',
     configFields: [
+      { name: 'mqttConfig', label: 'MQTT Broker', type: 'mqtt-config' },
+      { name: 'topic', label: 'Topic', type: 'string', default: 'test/#' }
+    ]
+  },
+  {
+    type: 'websocket-in',
+    label: 'WebSocket In',
+    category: 'input',
+    color: '#22c55e',
+    inputs: 0,
+    outputs: 1,
+    icon: '🔌',
+    description: 'Subscribe to WebSocket topics',
+    configFields: [
       { name: 'topic', label: 'Topic', type: 'string', default: 'test/#' }
     ]
   },
@@ -89,6 +103,20 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     outputs: 0,
     icon: '📢',
     description: 'Publish to MQTT topic',
+    configFields: [
+      { name: 'mqttConfig', label: 'MQTT Broker', type: 'mqtt-config' },
+      { name: 'topic', label: 'Topic', type: 'string', default: 'output' }
+    ]
+  },
+  {
+    type: 'websocket-out',
+    label: 'WebSocket Out',
+    category: 'output',
+    color: '#f97316',
+    inputs: 1,
+    outputs: 0,
+    icon: '🔌',
+    description: 'Publish to WebSocket topic',
     configFields: [
       { name: 'topic', label: 'Topic', type: 'string', default: 'output' }
     ]
@@ -198,6 +226,35 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     icon: '🔗',
     description: 'Combine messages into array'
   },
+  {
+    type: 'loop',
+    label: 'Loop',
+    category: 'logic',
+    color: '#3b82f6',
+    inputs: 1,
+    outputs: 1,
+    icon: '🔁',
+    description: 'Loop N times or foreach array items',
+    configFields: [
+      { name: 'mode', label: 'Mode', type: 'select', options: ['count', 'foreach'], default: 'count' },
+      { name: 'count', label: 'Loop Count', type: 'number', default: 3 },
+      { name: 'arrayPath', label: 'Array Path (foreach)', type: 'string', default: 'payload.items' },
+      { name: 'delay', label: 'Delay Between Iterations (ms)', type: 'number', default: 0 }
+    ]
+  },
+  {
+    type: 'data-table',
+    label: 'Data Table',
+    category: 'data',
+    color: '#8b5cf6',
+    inputs: 1,
+    outputs: 1,
+    icon: '📊',
+    description: 'Create or manipulate data tables',
+    configFields: [
+      { name: 'data', label: 'Table Data (JSON)', type: 'code', language: 'json', default: '[\n  {"name": "Item 1", "value": 100},\n  {"name": "Item 2", "value": 200}\n]' }
+    ]
+  },
 
   // AI node (using Vercel AI SDK)
   {
@@ -212,7 +269,72 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     configFields: [
       { name: 'aiConfig', label: 'AI Configuration', type: 'ai-config', default: '' },
       { name: 'prompt', label: 'Prompt', type: 'code', language: 'text', default: '{{payload.prompt}}' },
-      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7 }
+      { name: 'systemPrompt', label: 'System Prompt', type: 'code', language: 'text', default: '' },
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7 },
+      { name: 'maxTokens', label: 'Max Tokens', type: 'number', default: 1000 },
+      { name: 'memory', label: 'Memory (JSON)', type: 'code', language: 'json', default: '[]' },
+      { name: 'tools', label: 'Tools (JSON)', type: 'code', language: 'json', default: '[]' },
+      { name: 'outputParser', label: 'Output Parser', type: 'select', options: ['none', 'json', 'markdown'], default: 'none' }
+    ]
+  },
+
+  // UI Dashboard Nodes
+  {
+    type: 'ui-text',
+    label: 'UI Text',
+    category: 'output',
+    color: '#06b6d4',
+    inputs: 1,
+    outputs: 0,
+    icon: '📝',
+    description: 'Display text value in dashboard',
+    configFields: [
+      { name: 'label', label: 'Label', type: 'string', default: 'Text' },
+      { name: 'format', label: 'Format', type: 'string', default: '{{payload}}' }
+    ]
+  },
+  {
+    type: 'ui-number',
+    label: 'UI Number',
+    category: 'output',
+    color: '#06b6d4',
+    inputs: 1,
+    outputs: 0,
+    icon: '🔢',
+    description: 'Display number value in dashboard',
+    configFields: [
+      { name: 'label', label: 'Label', type: 'string', default: 'Number' },
+      { name: 'unit', label: 'Unit', type: 'string', default: '' },
+      { name: 'decimals', label: 'Decimals', type: 'number', default: 2 }
+    ]
+  },
+  {
+    type: 'ui-gauge',
+    label: 'UI Gauge',
+    category: 'output',
+    color: '#06b6d4',
+    inputs: 1,
+    outputs: 0,
+    icon: '📊',
+    description: 'Display gauge in dashboard',
+    configFields: [
+      { name: 'label', label: 'Label', type: 'string', default: 'Gauge' },
+      { name: 'min', label: 'Min', type: 'number', default: 0 },
+      { name: 'max', label: 'Max', type: 'number', default: 100 },
+      { name: 'unit', label: 'Unit', type: 'string', default: '%' }
+    ]
+  },
+  {
+    type: 'ui-switch',
+    label: 'UI Switch',
+    category: 'output',
+    color: '#06b6d4',
+    inputs: 1,
+    outputs: 0,
+    icon: '🔘',
+    description: 'Display switch/boolean in dashboard',
+    configFields: [
+      { name: 'label', label: 'Label', type: 'string', default: 'Switch' }
     ]
   }
 ];

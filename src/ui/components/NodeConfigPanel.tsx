@@ -12,6 +12,7 @@ import {
   IconTrash
 } from '@tabler/icons-react';
 import { getAIConfigs, saveAIConfig, deleteAIConfig, AI_PRESETS, type AIConfig, type AIProvider } from '../utils/ai-config';
+import { getMQTTConfigs, saveMQTTConfig, deleteMQTTConfig, MQTT_PRESETS, type MQTTConfig } from '../utils/mqtt-config';
 
 interface NodeConfigPanelProps {
   node: NodeConfig | null;
@@ -31,8 +32,20 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
   });
   const [selectedPreset, setSelectedPreset] = useState('');
 
+  const [mqttConfigs, setMqttConfigs] = useState<MQTTConfig[]>([]);
+  const [showNewMQTTConfig, setShowNewMQTTConfig] = useState(false);
+  const [newMQTTConfig, setNewMQTTConfig] = useState<{ name: string; url: string; username: string; password: string; tls: boolean }>({ 
+    name: '', 
+    url: 'mqtt://localhost:1883', 
+    username: '', 
+    password: '', 
+    tls: false 
+  });
+  const [selectedMQTTPreset, setSelectedMQTTPreset] = useState('');
+
   useEffect(() => {
     setAiConfigs(getAIConfigs());
+    setMqttConfigs(getMQTTConfigs());
   }, []);
 
   if (!node) return null;
@@ -73,6 +86,37 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
         provider: preset.provider,
         baseUrl: preset.baseUrl, 
         model: preset.model 
+      }));
+    }
+  };
+
+  const handleSaveMQTTConfig = () => {
+    if (!newMQTTConfig.name || !newMQTTConfig.url) return;
+    const saved = saveMQTTConfig(newMQTTConfig);
+    setMqttConfigs([...mqttConfigs, saved]);
+    handleChange('mqttConfig', saved);
+    setShowNewMQTTConfig(false);
+    setNewMQTTConfig({ name: '', url: 'mqtt://localhost:1883', username: '', password: '', tls: false });
+    setSelectedMQTTPreset('');
+  };
+
+  const handleDeleteMQTTConfig = (id: string) => {
+    deleteMQTTConfig(id);
+    setMqttConfigs(mqttConfigs.filter(c => c.id !== id));
+    if (node.config.mqttConfig?.id === id) {
+      handleChange('mqttConfig', null);
+    }
+  };
+
+  const handleMQTTPresetChange = (presetName: string) => {
+    setSelectedMQTTPreset(presetName);
+    const preset = MQTT_PRESETS.find(p => p.name === presetName);
+    if (preset) {
+      setNewMQTTConfig(prev => ({ 
+        ...prev, 
+        name: preset.name, 
+        url: preset.url, 
+        tls: preset.tls 
       }));
     }
   };
@@ -341,6 +385,127 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                       onClick={handleSaveAIConfig}
                       disabled={!newAIConfig.name || !newAIConfig.apiKey || !newAIConfig.model}
                       className="w-full px-3 py-1.5 text-xs bg-emerald-500 text-white rounded hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save & Use
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {field.type === 'mqtt-config' && (
+              <div className="space-y-2">
+                {/* Saved configs dropdown */}
+                <select
+                  value={node.config[field.name]?.id || ''}
+                  onChange={(e) => {
+                    const config = mqttConfigs.find(c => c.id === e.target.value);
+                    handleChange(field.name, config || null);
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="">Select MQTT broker...</option>
+                  {mqttConfigs.map(config => (
+                    <option key={config.id} value={config.id}>
+                      {config.name} ({config.url})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Selected config info */}
+                {node.config[field.name] && (
+                  <div className="p-2 bg-blue-50 rounded-md border border-blue-200 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-blue-700">
+                        📡 {node.config[field.name].name}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteMQTTConfig(node.config[field.name].id)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Delete this config"
+                      >
+                        <IconTrash size={12} />
+                      </button>
+                    </div>
+                    <div className="text-gray-500 mt-1">
+                      {node.config[field.name].url} {node.config[field.name].tls && '🔒'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add new config button */}
+                {!showNewMQTTConfig && (
+                  <button
+                    onClick={() => setShowNewMQTTConfig(true)}
+                    className="w-full px-3 py-2 text-xs border border-dashed border-gray-300 rounded-md text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <IconPlus size={12} /> Add New MQTT Broker
+                  </button>
+                )}
+
+                {/* New config form */}
+                {showNewMQTTConfig && (
+                  <div className="p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-700">New MQTT Broker</span>
+                      <button onClick={() => setShowNewMQTTConfig(false)} className="text-gray-400 hover:text-gray-600">
+                        <IconX size={14} />
+                      </button>
+                    </div>
+                    
+                    {/* Preset selector */}
+                    <select
+                      value={selectedMQTTPreset}
+                      onChange={(e) => handleMQTTPresetChange(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+                    >
+                      <option value="">Use preset...</option>
+                      {MQTT_PRESETS.map(p => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Config Name"
+                      value={newMQTTConfig.name}
+                      onChange={(e) => setNewMQTTConfig(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Broker URL (e.g., mqtt://localhost:1883)"
+                      value={newMQTTConfig.url}
+                      onChange={(e) => setNewMQTTConfig(prev => ({ ...prev, url: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Username (optional)"
+                      value={newMQTTConfig.username}
+                      onChange={(e) => setNewMQTTConfig(prev => ({ ...prev, username: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Password (optional)"
+                      value={newMQTTConfig.password}
+                      onChange={(e) => setNewMQTTConfig(prev => ({ ...prev, password: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
+                    />
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={newMQTTConfig.tls}
+                        onChange={(e) => setNewMQTTConfig(prev => ({ ...prev, tls: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <span>Use TLS/SSL</span>
+                    </label>
+                    <button
+                      onClick={handleSaveMQTTConfig}
+                      disabled={!newMQTTConfig.name || !newMQTTConfig.url}
+                      className="w-full px-3 py-1.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Save & Use
                     </button>

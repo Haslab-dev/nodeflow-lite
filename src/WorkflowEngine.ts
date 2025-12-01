@@ -114,6 +114,7 @@ export class WorkflowEngine extends EventEmitter {
 
     const context: NodeExecutionContext = {
       node,
+      workflowId: this.currentWorkflow?.id,
       send: (outMsg, output = 0) => {
         const promise = this.sendMessage(node, outMsg, output, nodeMap);
         sendPromises.push(promise);

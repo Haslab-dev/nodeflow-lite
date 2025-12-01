@@ -1,17 +1,13 @@
+import { createServer } from 'node:net';
+import Aedes from 'aedes';
 import type { RuntimeService, WorkflowMessage } from "../types/index.ts";
 
 type MessageHandler = (msg: WorkflowMessage) => void;
 
-interface MqttClient {
-  id: string;
-  ws: any;
-  subscriptions: Set<string>;
-}
-
-// Simple MQTT-like broker using WebSocket
+// MQTT Broker using Aedes
 export class MqttBroker implements RuntimeService {
+  private aedes: any = null;
   private server: any = null;
-  private clients: Map<string, MqttClient> = new Map();
   private subscriptions: Map<string, Set<MessageHandler>> = new Map();
   private port: number;
 
@@ -22,84 +18,87 @@ export class MqttBroker implements RuntimeService {
   async start(): Promise<void> {
     if (this.server) return;
 
-    this.server = Bun.serve({
-      port: this.port,
-      fetch(req, server) {
-        if (server.upgrade(req)) return;
-        return new Response("MQTT Broker - WebSocket only", { status: 400 });
-      },
-      websocket: {
-        open: (ws) => {
-          const clientId = crypto.randomUUID();
-          (ws as any).clientId = clientId;
-          this.clients.set(clientId, { id: clientId, ws, subscriptions: new Set() });
-          console.log(`📡 MQTT Client connected: ${clientId}`);
-        },
-        message: (ws, message) => {
-          try {
-            const data = JSON.parse(message.toString());
-            this.handleMessage((ws as any).clientId, data);
-          } catch (e) {
-            console.error('Invalid MQTT message:', e);
-          }
-        },
-        close: (ws) => {
-          const clientId = (ws as any).clientId;
-          this.clients.delete(clientId);
-          console.log(`📡 MQTT Client disconnected: ${clientId}`);
+    try {
+      // Create Aedes broker
+      this.aedes = new Aedes();
+
+      // Listen for published messages
+      this.aedes.on('publish', (packet: any, client: any) => {
+        // Skip system topics
+        if (packet.topic.startsWith('$SYS/')) return;
+        
+        const topic = packet.topic;
+        const payload = packet.payload?.toString() || '';
+        
+        // Try to parse JSON payload
+        let parsedPayload: any;
+        try {
+          parsedPayload = JSON.parse(payload);
+        } catch {
+          parsedPayload = payload;
         }
+
+        // Notify internal handlers
+        const msg: WorkflowMessage = { 
+          payload: parsedPayload, 
+          metadata: { topic, timestamp: Date.now() } 
+        };
+
+        for (const [pattern, handlers] of this.subscriptions) {
+          if (this.topicMatches(pattern, topic)) {
+            handlers.forEach(h => h(msg));
+          }
+        }
+
+        console.log(`📤 MQTT Published [${topic}]:`, typeof parsedPayload === 'object' ? JSON.stringify(parsedPayload).slice(0, 100) : parsedPayload);
+      });
+
+      this.aedes.on('client', (client: any) => {
+        console.log(`📡 MQTT Client connected: ${client.id}`);
+      });
+
+      this.aedes.on('clientDisconnect', (client: any) => {
+        console.log(`📡 MQTT Client disconnected: ${client.id}`);
+      });
+
+      // Create TCP server
+      this.server = createServer(this.aedes.handle);
+      
+      await new Promise<void>((resolve, reject) => {
+        this.server.listen(this.port, () => {
+          console.log(`📡 MQTT Broker (Aedes) running on mqtt://localhost:${this.port}`);
+          resolve();
+        });
+        this.server.on('error', reject);
+      });
+    } catch (error) {
+      console.error('Failed to start MQTT broker:', error);
+      throw error;
+    }
+  }
+
+  // Publish message to broker
+  publish(topic: string, payload: any) {
+    if (!this.aedes) {
+      console.warn('MQTT Broker not running');
+      return;
+    }
+
+    // Convert payload to string/buffer
+    const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const payloadBuffer = Buffer.from(payloadStr);
+
+    // Publish to all connected clients via broker
+    this.aedes.publish({
+      topic,
+      payload: payloadBuffer,
+      qos: 0,
+      retain: false
+    }, (err: any) => {
+      if (err) {
+        console.error('MQTT publish error:', err);
       }
     });
-
-    console.log(`📡 MQTT Broker running on ws://localhost:${this.port}`);
-  }
-
-  private handleMessage(clientId: string, data: { type: string; topic?: string; payload?: any }) {
-    const client = this.clients.get(clientId);
-    if (!client) return;
-
-    switch (data.type) {
-      case 'subscribe':
-        if (data.topic) {
-          client.subscriptions.add(data.topic);
-          console.log(`📡 Client ${clientId} subscribed to: ${data.topic}`);
-        }
-        break;
-
-      case 'unsubscribe':
-        if (data.topic) {
-          client.subscriptions.delete(data.topic);
-        }
-        break;
-
-      case 'publish':
-        if (data.topic) {
-          this.publish(data.topic, data.payload);
-        }
-        break;
-    }
-  }
-
-  // Publish message to all matching subscribers
-  publish(topic: string, payload: any) {
-    const msg: WorkflowMessage = { payload, metadata: { topic, timestamp: Date.now() } };
-
-    // Notify WebSocket clients
-    for (const client of this.clients.values()) {
-      for (const sub of client.subscriptions) {
-        if (this.topicMatches(sub, topic)) {
-          client.ws.send(JSON.stringify({ type: 'message', topic, payload }));
-          break;
-        }
-      }
-    }
-
-    // Notify internal handlers
-    for (const [pattern, handlers] of this.subscriptions) {
-      if (this.topicMatches(pattern, topic)) {
-        handlers.forEach(h => h(msg));
-      }
-    }
 
     console.log(`📤 MQTT Published [${topic}]:`, typeof payload === 'object' ? JSON.stringify(payload).slice(0, 100) : payload);
   }
@@ -116,7 +115,7 @@ export class MqttBroker implements RuntimeService {
     this.subscriptions.get(topic)?.delete(handler);
   }
 
-  // Simple topic matching with wildcards
+  // Simple topic matching with wildcards (MQTT standard)
   private topicMatches(pattern: string, topic: string): boolean {
     if (pattern === topic) return true;
     if (pattern === '#') return true;
@@ -135,19 +134,28 @@ export class MqttBroker implements RuntimeService {
 
   async stop(): Promise<void> {
     if (this.server) {
-      this.server.stop();
+      await new Promise<void>((resolve) => {
+        this.server.close(() => {
+          console.log('📡 MQTT Broker stopped');
+          resolve();
+        });
+      });
+      
+      if (this.aedes) {
+        await this.aedes.close();
+        this.aedes = null;
+      }
+      
       this.server = null;
-      this.clients.clear();
       this.subscriptions.clear();
-      console.log('📡 MQTT Broker stopped');
     }
   }
 
   isRunning(): boolean {
-    return this.server !== null;
+    return this.server !== null && this.aedes !== null;
   }
 
   getClientCount(): number {
-    return this.clients.size;
+    return this.aedes?.connectedClients || 0;
   }
 }

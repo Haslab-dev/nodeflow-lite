@@ -14,7 +14,9 @@ import {
   IconTemplate,
   IconPlayerPlay,
   IconX,
-  IconRobot
+  IconRobot,
+  IconRepeat,
+  IconTable
 } from '@tabler/icons-react';
 
 interface WorkflowNodeProps {
@@ -55,6 +57,16 @@ const nodeIcons: Record<string, React.ReactNode> = {
   
   // AI node
   'ai-generate': <IconRobot size={16} />,
+  
+  // Loop and Data nodes
+  'loop': <IconRepeat size={16} />,
+  'data-table': <IconTable size={16} />,
+  
+  // UI Dashboard nodes
+  'ui-text': <IconCode size={16} />,
+  'ui-number': <IconCode size={16} />,
+  'ui-gauge': <IconCode size={16} />,
+  'ui-switch': <IconCode size={16} />,
 };
 
 function WorkflowNode({ id, data, selected }: WorkflowNodeProps) {

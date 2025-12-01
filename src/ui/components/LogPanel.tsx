@@ -37,52 +37,7 @@ export function LogPanel({ infoLogs = [], debugLogs = [], onClearInfo, onClearDe
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Info Logs Section */}
-      <div className="flex flex-col border-b border-gray-200">
-        <div className="flex items-center justify-between pl-4 pr-8 py-2 bg-gray-50 shrink-0">
-          <div className="text-xs font-semibold text-gray-700">Info</div>
-          <button 
-            onClick={onClearInfo}
-            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-200 rounded transition-colors"
-            title="Clear info log"
-          >
-            <IconTrash size={14} />
-          </button>
-        </div>
-        <div ref={infoContainerRef} className="max-h-48 overflow-y-auto font-mono text-xs scrollbar-thin">
-          {infoLogs.length === 0 ? (
-            <div className="flex items-center justify-center h-20 text-gray-400 text-xs">
-              No info logs
-            </div>
-          ) : (
-            <div>
-              {infoLogs.map((log, i) => {
-                const isError = log.message.includes('❌');
-                
-                return (
-                  <div
-                    key={`info-${log.timestamp}-${i}`}
-                    className={`px-3 py-1.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                      isError ? 'bg-red-50/30' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400 text-[10px]">{log.timestamp}</span>
-                      <span className={`font-medium ${
-                        isError ? 'text-red-600' : 'text-gray-700'
-                      }`}>
-                        {log.message}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Debug Output Section */}
+      {/* Debug Output Section - Full Height */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between pl-4 pr-8 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
           <div className="text-xs font-semibold text-gray-700">Debug Output</div>

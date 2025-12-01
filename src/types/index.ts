@@ -24,6 +24,7 @@ export interface WorkflowDefinition {
 
 export interface NodeExecutionContext {
   node: NodeConfig;
+  workflowId?: string;
   send: (msg: WorkflowMessage, output?: number) => void;
   log: (msg: string) => void;
   error: (msg: string, err?: Error) => void;
@@ -50,7 +51,7 @@ export interface NodeTypeDefinition {
 export interface ConfigField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'code' | 'select' | 'ai-config';
+  type: 'string' | 'number' | 'boolean' | 'code' | 'select' | 'ai-config' | 'mqtt-config';
   language?: 'javascript' | 'json' | 'markdown' | 'text'; // For code type
   options?: string[];
   default?: any;

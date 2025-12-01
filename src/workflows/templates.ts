@@ -173,6 +173,45 @@ export const templateWorkflows: WorkflowDefinition[] = [
       { id: '3', type: 'mqtt-out', name: 'Publish to MQTT', config: { topic: 'sensors/temperature' }, wires: [[]], position: { x: 200, y: 250 } },
       { id: '4', type: 'debug', name: 'Confirm Sent', config: {}, wires: [[]], position: { x: 200, y: 350 } }
     ]
+  },
+  {
+    id: 'template-ui-dashboard',
+    name: '📊 UI Dashboard Demo',
+    type: 'flow',
+    nodes: [
+      // === MQTT PUBLISHERS (Left side) ===
+      // Temperature publisher
+      { id: '1', type: 'inject', name: 'Send Temp', config: { payload: {} }, wires: [['2']], position: { x: 50, y: 50 } },
+      { id: '2', type: 'function', name: 'Gen Temp', config: { code: 'msg.payload = Math.round(Math.random() * 40 + 10);\nreturn msg;' }, wires: [['3']], position: { x: 50, y: 130 } },
+      { id: '3', type: 'mqtt-out', name: 'Pub Temp', config: { topic: 'sensors/temperature' }, wires: [[]], position: { x: 50, y: 210 } },
+      
+      // Humidity publisher
+      { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 290 } },
+      { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 370 } },
+      { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 450 } },
+      
+      // Status publisher
+      { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 530 } },
+      { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 610 } },
+      { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 690 } },
+      
+      // Message publisher
+      { id: '10', type: 'inject', name: 'Send Message', config: { payload: {} }, wires: [['11']], position: { x: 50, y: 770 } },
+      { id: '11', type: 'function', name: 'Gen Message', config: { code: 'msg.payload = "Sensor reading at " + new Date().toLocaleTimeString();\nreturn msg;' }, wires: [['12']], position: { x: 50, y: 850 } },
+      { id: '12', type: 'mqtt-out', name: 'Pub Message', config: { topic: 'sensors/message' }, wires: [[]], position: { x: 50, y: 930 } },
+      
+      // === MQTT SUBSCRIBERS (Middle) ===
+      { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 250, y: 130 } },
+      { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 250, y: 370 } },
+      { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 250, y: 610 } },
+      { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 250, y: 850 } },
+      
+      // === UI DASHBOARD (Right side) ===
+      { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 450, y: 130 } },
+      { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 450, y: 370 } },
+      { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
+      { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
+    ]
   }
 ];
 
@@ -256,6 +295,57 @@ export const defaultProject: Project = {
         { id: '2', type: 'ai-generate', name: 'Call AI', config: { aiConfig: null, prompt: '{{payload.prompt}}', temperature: 0.7 }, wires: [['3']], position: { x: 200, y: 150 } },
         { id: '3', type: 'function', name: 'Format Response', config: { code: 'msg.payload = {\n  prompt: msg.payload.prompt,\n  response: msg.payload.response,\n  timestamp: new Date().toLocaleTimeString()\n};\nreturn msg;' }, wires: [['4']], position: { x: 200, y: 250 } },
         { id: '4', type: 'debug', name: 'Show Result', config: { output: 'payload' }, wires: [[]], position: { x: 200, y: 350 } }
+      ]
+    },
+    {
+      id: 'demo-loop-ai',
+      name: '🔁 Loop + AI Demo',
+      type: 'flow',
+      nodes: [
+        { id: '1', type: 'inject', name: 'Start', config: { payload: {} }, wires: [['2']], position: { x: 100, y: 50 } },
+        { id: '2', type: 'data-table', name: 'Load Prompts', config: { data: '[{"prompt":"Write a short joke about cats"},{"prompt":"Write a short joke about dogs"},{"prompt":"Write a short joke about birds"}]' }, wires: [['3']], position: { x: 100, y: 150 } },
+        { id: '3', type: 'loop', name: 'Foreach Item', config: { mode: 'foreach', count: 3, arrayPath: 'payload.table' }, wires: [['4']], position: { x: 100, y: 250 } },
+        { id: '4', type: 'ai-generate', name: 'Generate Joke', config: { aiConfig: null, prompt: '{{payload.prompt}}', temperature: 0.9 }, wires: [['5']], position: { x: 100, y: 350 } },
+        { id: '5', type: 'debug', name: 'Show Result', config: { output: 'payload' }, wires: [[]], position: { x: 100, y: 450 } }
+      ]
+    },
+    {
+      id: 'demo-ui-dashboard',
+      name: '📊 UI Dashboard Demo',
+      type: 'flow',
+      nodes: [
+        // === MQTT PUBLISHERS (Left side) ===
+        // Temperature publisher
+        { id: '1', type: 'inject', name: 'Send Temp', config: { payload: {} }, wires: [['2']], position: { x: 50, y: 50 } },
+        { id: '2', type: 'function', name: 'Gen Temp', config: { code: 'msg.payload = Math.round(Math.random() * 40 + 10);\nreturn msg;' }, wires: [['3']], position: { x: 50, y: 130 } },
+        { id: '3', type: 'mqtt-out', name: 'Pub Temp', config: { topic: 'sensors/temperature' }, wires: [[]], position: { x: 50, y: 210 } },
+        
+        // Humidity publisher
+        { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 290 } },
+        { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 370 } },
+        { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 450 } },
+        
+        // Status publisher
+        { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 530 } },
+        { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 610 } },
+        { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 690 } },
+        
+        // Message publisher
+        { id: '10', type: 'inject', name: 'Send Message', config: { payload: {} }, wires: [['11']], position: { x: 50, y: 770 } },
+        { id: '11', type: 'function', name: 'Gen Message', config: { code: 'msg.payload = "Sensor reading at " + new Date().toLocaleTimeString();\nreturn msg;' }, wires: [['12']], position: { x: 50, y: 850 } },
+        { id: '12', type: 'mqtt-out', name: 'Pub Message', config: { topic: 'sensors/message' }, wires: [[]], position: { x: 50, y: 930 } },
+        
+        // === MQTT SUBSCRIBERS (Middle) ===
+        { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 250, y: 130 } },
+        { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 250, y: 370 } },
+        { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 250, y: 610 } },
+        { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 250, y: 850 } },
+        
+        // === UI DASHBOARD (Right side) ===
+        { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 450, y: 130 } },
+        { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 450, y: 370 } },
+        { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
+        { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
       ]
     }
   ],

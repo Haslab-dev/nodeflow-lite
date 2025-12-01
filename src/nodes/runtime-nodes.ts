@@ -133,12 +133,15 @@ export class MqttService implements RuntimeService {
 // Track active subscriptions to prevent duplicates
 const activeHttpRoutes = new Set<string>();
 const activeMqttSubs = new Set<string>();
+const activeWsSubs = new Set<string>();
+const externalMqttClients = new Map<string, any>();
 
 // Register runtime nodes
 export function registerRuntimeNodes(
   engine: { registerNodeType: (type: string, executor: NodeExecutor) => void },
   httpService: HttpInService,
-  mqttService: MqttService
+  mqttService: MqttService,
+  wsService?: any // WebSocket broker (optional)
 ) {
   // HTTP IN - receives HTTP requests (listener node - registers handler only)
   engine.registerNodeType('http-in', async (_msg: WorkflowMessage, ctx: NodeExecutionContext) => {
@@ -169,34 +172,190 @@ export function registerRuntimeNodes(
 
   // MQTT IN - subscribes to MQTT topic (listener node - registers handler only)
   engine.registerNodeType('mqtt-in', async (_msg: WorkflowMessage, ctx: NodeExecutionContext) => {
-    const { topic = 'test/#' } = ctx.node.config;
+    const { mqttConfig, topic = 'test/#' } = ctx.node.config;
+    
+    // Use local broker if no config specified
+    const broker = mqttConfig?.id || 'local';
+    const url = mqttConfig?.url || 'mqtt://localhost:1883';
+    const username = mqttConfig?.username || '';
+    const password = mqttConfig?.password || '';
+    const tls = mqttConfig?.tls || false;
+    
+    const subKey = `${broker === 'local' ? 'local' : url}-${topic}`;
     
     // Prevent duplicate subscriptions
-    if (activeMqttSubs.has(topic)) {
+    if (activeMqttSubs.has(subKey)) {
       ctx.log(`Already subscribed to ${topic}`);
       return;
     }
     
-    activeMqttSubs.add(topic);
-    mqttService.subscribe(topic, (incomingMsg) => {
-      ctx.log(`📥 MQTT [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
-      ctx.send(incomingMsg);
-    });
+    activeMqttSubs.add(subKey);
     
-    ctx.log(`✓ Subscribed to ${topic}`);
-    // Don't send downstream - this is a listener setup only
+    if (broker === 'local') {
+      // Use local broker
+      mqttService.subscribe(topic, (incomingMsg) => {
+        ctx.log(`📥 MQTT [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
+        ctx.send(incomingMsg);
+      });
+      ctx.log(`✓ Subscribed to ${topic} (local broker)`);
+    } else {
+      // Connect to external broker
+      const mqtt = await import('mqtt');
+      const brokerUrl = tls ? url.replace('mqtt://', 'mqtts://') : url;
+      const options: any = {
+        clientId: `nodeflow_${Math.random().toString(16).slice(2, 10)}`,
+      };
+      
+      if (username) {
+        options.username = username;
+        options.password = password;
+      }
+      
+      if (tls) {
+        options.rejectUnauthorized = false; // For self-signed certs
+      }
+      
+      const client = mqtt.connect(brokerUrl, options);
+      
+      client.on('connect', () => {
+        ctx.log(`✓ Connected to ${brokerUrl}`);
+        client.subscribe(topic, (err) => {
+          if (err) {
+            ctx.error(`Failed to subscribe: ${err.message}`);
+          } else {
+            ctx.log(`✓ Subscribed to ${topic}`);
+          }
+        });
+      });
+      
+      client.on('message', (receivedTopic, payload) => {
+        let parsedPayload: any;
+        try {
+          parsedPayload = JSON.parse(payload.toString());
+        } catch {
+          parsedPayload = payload.toString();
+        }
+        
+        const incomingMsg: WorkflowMessage = {
+          payload: parsedPayload,
+          metadata: { topic: receivedTopic, timestamp: Date.now() }
+        };
+        
+        ctx.log(`📥 MQTT [${receivedTopic}]: ${JSON.stringify(parsedPayload)}`);
+        ctx.send(incomingMsg);
+      });
+      
+      client.on('error', (err) => {
+        ctx.error(`MQTT error: ${err.message}`);
+      });
+      
+      // Store client for cleanup
+      externalMqttClients.set(subKey, client);
+    }
   });
 
   // MQTT OUT - publishes to MQTT topic
   engine.registerNodeType('mqtt-out', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
-    const { topic = 'output' } = ctx.node.config;
-    ctx.log(`📤 Publishing to ${topic}: ${JSON.stringify(msg.payload)}`);
-    mqttService.publish(topic, msg.payload);
+    const { mqttConfig, topic = 'output' } = ctx.node.config;
+    
+    // Use local broker if no config specified
+    const broker = mqttConfig?.id || 'local';
+    const url = mqttConfig?.url || 'mqtt://localhost:1883';
+    const username = mqttConfig?.username || '';
+    const password = mqttConfig?.password || '';
+    const tls = mqttConfig?.tls || false;
+    
+    if (broker === 'local') {
+      // Use local broker
+      ctx.log(`📤 Publishing to ${topic}: ${JSON.stringify(msg.payload)}`);
+      mqttService.publish(topic, msg.payload);
+    } else {
+      // Connect to external broker
+      const mqtt = await import('mqtt');
+      const brokerUrl = tls ? url.replace('mqtt://', 'mqtts://') : url;
+      const clientKey = `${brokerUrl}-pub`;
+      
+      // Reuse existing client or create new one
+      let client = externalMqttClients.get(clientKey);
+      
+      if (!client || !client.connected) {
+        const options: any = {
+          clientId: `nodeflow_pub_${Math.random().toString(16).slice(2, 10)}`,
+        };
+        
+        if (username) {
+          options.username = username;
+          options.password = password;
+        }
+        
+        if (tls) {
+          options.rejectUnauthorized = false;
+        }
+        
+        client = mqtt.connect(brokerUrl, options);
+        externalMqttClients.set(clientKey, client);
+        
+        await new Promise<void>((resolve) => {
+          client!.on('connect', () => {
+            ctx.log(`✓ Connected to ${brokerUrl}`);
+            resolve();
+          });
+        });
+      }
+      
+      const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
+      client.publish(topic, payload, (err) => {
+        if (err) {
+          ctx.error(`Failed to publish: ${err.message}`);
+        } else {
+          ctx.log(`📤 Published to ${topic}: ${payload}`);
+        }
+      });
+    }
   });
+
+  // WebSocket nodes (if wsService is provided)
+  if (wsService) {
+    // WEBSOCKET IN - subscribes to WebSocket topic
+    engine.registerNodeType('websocket-in', async (_msg: WorkflowMessage, ctx: NodeExecutionContext) => {
+      const { topic = 'test/#' } = ctx.node.config;
+      
+      if (activeWsSubs.has(topic)) {
+        ctx.log(`Already subscribed to ${topic}`);
+        return;
+      }
+      
+      activeWsSubs.add(topic);
+      wsService.subscribe(topic, (incomingMsg: WorkflowMessage) => {
+        ctx.log(`🔌 WebSocket [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
+        ctx.send(incomingMsg);
+      });
+      
+      ctx.log(`✓ Subscribed to WebSocket ${topic}`);
+    });
+
+    // WEBSOCKET OUT - publishes to WebSocket topic
+    engine.registerNodeType('websocket-out', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
+      const { topic = 'output' } = ctx.node.config;
+      ctx.log(`🔌 Publishing to WebSocket ${topic}: ${JSON.stringify(msg.payload)}`);
+      wsService.publish(topic, msg.payload);
+    });
+  }
 }
 
 // Clear subscriptions (call when stopping services)
 export function clearRuntimeSubscriptions() {
   activeHttpRoutes.clear();
   activeMqttSubs.clear();
+  activeWsSubs.clear();
+  
+  // Disconnect external MQTT clients
+  for (const client of externalMqttClients.values()) {
+    try {
+      client.end();
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+  }
+  externalMqttClients.clear();
 }

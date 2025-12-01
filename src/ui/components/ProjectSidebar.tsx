@@ -25,7 +25,10 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconLogout,
   IconUser,
-  IconRobot
+  IconRobot,
+  IconRepeat,
+  IconTable,
+  IconRefresh
 } from '@tabler/icons-react';
 
 interface ProjectSidebarProps {
@@ -74,6 +77,16 @@ const nodeIcons: Record<string, React.ReactNode> = {
   
   // AI node
   'ai-generate': <IconRobot size={16} />,
+  
+  // Loop and Data nodes
+  'loop': <IconRepeat size={16} />,
+  'data-table': <IconTable size={16} />,
+  
+  // UI Dashboard nodes
+  'ui-text': <IconCode size={16} />,
+  'ui-number': <IconCode size={16} />,
+  'ui-gauge': <IconCode size={16} />,
+  'ui-switch': <IconCode size={16} />,
 };
 
 const categoryColors: Record<string, string> = {
@@ -334,12 +347,28 @@ export function ProjectSidebar({
                       <div className="pl-4 mt-1 space-y-0.5 border-l border-gray-100 ml-2.5">
                         <div className="flex items-center justify-between px-2 py-1.5">
                           <span className="text-[10px] text-gray-400 font-medium">FLOWS</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowNewWorkflow(true); }}
-                            className="text-gray-400 hover:text-blue-500 p-0.5 hover:bg-blue-50 rounded"
-                          >
-                            <IconPlus size={12} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (confirm('Reset all projects? This will clear all workflows and reload the page.')) {
+                                  localStorage.removeItem('nodeflow-projects');
+                                  window.location.reload();
+                                }
+                              }}
+                              className="text-gray-400 hover:text-red-500 p-0.5 hover:bg-red-50 rounded"
+                              title="Reset all projects"
+                            >
+                              <IconRefresh size={12} />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowNewWorkflow(true); }}
+                              className="text-gray-400 hover:text-blue-500 p-0.5 hover:bg-blue-50 rounded"
+                              title="Add new flow"
+                            >
+                              <IconPlus size={12} />
+                            </button>
+                          </div>
                         </div>
                         
                         {showNewWorkflow && (

@@ -13,11 +13,14 @@ import {
   type BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconPlayerStop, IconCode, IconLogin } from '@tabler/icons-react';
+import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconPlayerStop, IconCode, IconLogin, IconDashboard } from '@tabler/icons-react';
 
 import WorkflowNode from './components/WorkflowNode.tsx';
 import { NodeConfigPanel } from './components/NodeConfigPanel.tsx';
+import { NodeConfigModal } from './components/NodeConfigModal.tsx';
+import { DataTableModal } from './components/DataTableModal.tsx';
 import { LogPanel } from './components/LogPanel.tsx';
+import { DashboardPanel } from './components/DashboardPanel.tsx';
 import { ProjectSidebar } from './components/ProjectSidebar.tsx';
 import { CodeEditor } from './components/CodeEditor.tsx';
 import { nodeDefinitionMap } from '../nodes/node-definitions.ts';
@@ -72,11 +75,12 @@ export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<NodeConfig | null>(null);
+  const [showNodeModal, setShowNodeModal] = useState(false);
   const [infoLogs, setInfoLogs] = useState<Array<{ timestamp: string; message: string }>>([]);
   const [debugLogs, setDebugLogs] = useState<Array<{ timestamp: string; message: string }>>([]);
-  const [runtimeStatus, setRuntimeStatus] = useState({ http: false, mqtt: false, mqttClients: 0 });
+  const [runtimeStatus, setRuntimeStatus] = useState({ http: false, mqtt: false, ws: false, mqttClients: 0, wsClients: 0 });
   const [isDeployed, setIsDeployed] = useState(false);
-  const [rightSidebarTab, setRightSidebarTab] = useState<'info' | 'debug'>('debug');
+  const [rightSidebarTab, setRightSidebarTab] = useState<'info' | 'debug' | 'dashboard'>('debug');
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true);
   const [rightSidebarVisible, setRightSidebarVisible] = useState(true);
   
@@ -112,8 +116,8 @@ export default function App() {
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/status');
-        const status = await res.json() as { http: boolean; mqtt: boolean; mqttClients?: number; deployed?: boolean; executingNodeId?: string | null };
-        setRuntimeStatus({ http: status.http, mqtt: status.mqtt, mqttClients: status.mqttClients || 0 });
+        const status = await res.json() as { http: boolean; mqtt: boolean; ws: boolean; mqttClients?: number; wsClients?: number; deployed?: boolean; executingNodeId?: string | null };
+        setRuntimeStatus({ http: status.http, mqtt: status.mqtt, ws: status.ws, mqttClients: status.mqttClients || 0, wsClients: status.wsClients || 0 });
         // Update executing node for visual feedback
         if (status.executingNodeId !== undefined) {
           setExecutingNodeId(status.executingNodeId);
@@ -567,7 +571,7 @@ export default function App() {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: FlowNode) => {
     setSelectedNode({ id: node.id, type: node.data.type, name: node.data.label, config: node.data.config, wires: [] });
-    setRightSidebarTab('info');
+    setShowNodeModal(true);
   }, []);
 
   const updateNodeConfig = (id: string, config: Record<string, any>) => {
@@ -731,6 +735,17 @@ export default function App() {
               >
                 <span className={`w-2 h-2 rounded-full ${runtimeStatus.mqtt ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></span>
                 MQTT
+              </div>
+              <div
+                className={`flex items-center gap-2 px-2 py-1 rounded text-xs font-medium ${
+                  runtimeStatus.ws
+                    ? 'text-purple-700'
+                    : 'text-gray-500'
+                }`}
+                title={runtimeStatus.ws ? `WebSocket Broker: Connected (${runtimeStatus.wsClients} clients)` : 'WebSocket Broker: Disconnected'}
+              >
+                <span className={`w-2 h-2 rounded-full ${runtimeStatus.ws ? 'bg-purple-500 animate-pulse' : 'bg-gray-400'}`}></span>
+                WS
               </div>
             </div>
             
@@ -937,25 +952,36 @@ export default function App() {
                   <div className="flex-1 flex p-1 bg-gray-100 rounded-lg">
                     <button
                       onClick={() => setRightSidebarTab('info')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-all ${
                         rightSidebarTab === 'info'
                           ? 'bg-white text-gray-900 shadow-sm'
                           : 'text-gray-500 hover:text-gray-700'
                       }`}
                     >
-                      <IconInfoCircle size={14} />
+                      <IconInfoCircle size={13} />
                       Info
                     </button>
                     <button
                       onClick={() => setRightSidebarTab('debug')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-all ${
                         rightSidebarTab === 'debug'
                           ? 'bg-white text-gray-900 shadow-sm'
                           : 'text-gray-500 hover:text-gray-700'
                       }`}
                     >
-                      <IconBug size={14} />
+                      <IconBug size={13} />
                       Debug
+                    </button>
+                    <button
+                      onClick={() => setRightSidebarTab('dashboard')}
+                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        rightSidebarTab === 'dashboard'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      <IconDashboard size={13} />
+                      UI
                     </button>
                   </div>
                   <button
@@ -971,25 +997,95 @@ export default function App() {
               {/* Content */}
               <div className="flex-1 overflow-hidden">
                 {rightSidebarTab === 'info' ? (
-                  selectedNode ? (
-                    <NodeConfigPanel
-                      node={selectedNode}
-                      onUpdate={updateNodeConfig}
-                      onClose={undefined}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8 text-center">
-                      <IconInfoCircle size={48} className="mb-3 opacity-20" />
-                      <p className="text-sm font-medium">No node selected</p>
-                      <p className="text-xs mt-1">Click on a node to view its configuration</p>
+                  <div className="h-full overflow-y-auto p-4 space-y-4">
+                    {/* System Status */}
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-700 mb-2">System Status</h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-xs text-gray-600">HTTP Server</span>
+                          <span className={`text-xs font-medium ${runtimeStatus.http ? 'text-green-600' : 'text-gray-400'}`}>
+                            {runtimeStatus.http ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-xs text-gray-600">MQTT Broker</span>
+                          <span className={`text-xs font-medium ${runtimeStatus.mqtt ? 'text-green-600' : 'text-gray-400'}`}>
+                            {runtimeStatus.mqtt ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-xs text-gray-600">WS Broker</span>
+                          <span className={`text-xs font-medium ${runtimeStatus.ws ? 'text-purple-600' : 'text-gray-400'}`}>
+                            {runtimeStatus.ws ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-xs text-gray-600">MQTT Clients</span>
+                          <span className="text-xs font-medium text-gray-700">{runtimeStatus.mqttClients}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-xs text-gray-600">Workflow Status</span>
+                          <span className={`text-xs font-medium ${isDeployed ? 'text-green-600' : 'text-gray-400'}`}>
+                            {isDeployed ? 'Deployed' : 'Not Deployed'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  )
-                ) : (
+
+                    {/* Current Workflow Info */}
+                    {currentWorkflow && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-700 mb-2">Current Workflow</h3>
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                          <div className="text-sm font-medium text-blue-900">{currentWorkflow.name}</div>
+                          <div className="text-xs text-blue-600 mt-1">
+                            {currentWorkflow.nodes?.length || 0} nodes • {currentWorkflow.type || 'flow'} type
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Info Logs */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-xs font-semibold text-gray-700">Execution Log</h3>
+                        <button 
+                          onClick={clearInfoLogs}
+                          className="text-xs text-gray-500 hover:text-red-600"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto border border-gray-200 rounded">
+                        {infoLogs.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-gray-400">No execution logs</div>
+                        ) : (
+                          <div className="font-mono text-xs">
+                            {infoLogs.map((log, i) => (
+                              <div key={i} className="p-2 border-b border-gray-100 hover:bg-gray-50">
+                                <span className="text-gray-400 text-[10px]">{log.timestamp}</span>
+                                <div className="text-gray-700 mt-0.5">{log.message}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : rightSidebarTab === 'debug' ? (
                   <LogPanel 
-                    infoLogs={infoLogs}
+                    infoLogs={[]}
                     debugLogs={debugLogs} 
                     onClearInfo={clearInfoLogs}
                     onClearDebug={clearDebugLogs} 
+                  />
+                ) : (
+                  <DashboardPanel 
+                    onClear={() => {
+                      // Clear dashboard data
+                      fetch('/api/ui-data', { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
+                    }}
                   />
                 )}
               </div>
@@ -1008,6 +1104,24 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Node Configuration Modal */}
+      {showNodeModal && selectedNode && (
+        selectedNode.type === 'data-table' ? (
+          <DataTableModal
+            node={selectedNode}
+            onUpdate={updateNodeConfig}
+            onClose={() => setShowNodeModal(false)}
+          />
+        ) : (
+          <NodeConfigModal
+            node={selectedNode}
+            onUpdate={updateNodeConfig}
+            onClose={() => setShowNodeModal(false)}
+            authToken={authToken}
+          />
+        )
+      )}
 
     </div>
   );

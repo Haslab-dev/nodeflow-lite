@@ -27,7 +27,9 @@
     "@openrouter/ai-sdk-provider": "^1.2.8",
     "@tabler/icons-react": "^3.35.0",
     "@xyflow/react": "^12.9.3",
+    "aedes": "^0.51.3",
     "ai": "^5.0.104",
+    "mqtt": "^5.14.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zhipu-ai-provider": "^0.1.1"
