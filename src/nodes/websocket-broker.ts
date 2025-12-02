@@ -22,36 +22,44 @@ export class WebSocketBroker implements RuntimeService {
   async start(): Promise<void> {
     if (this.server) return;
 
-    this.server = Bun.serve({
-      port: this.port,
-      fetch(req, server) {
-        if (server.upgrade(req)) return;
-        return new Response("WebSocket Broker - WebSocket only", { status: 400 });
-      },
-      websocket: {
-        open: (ws) => {
-          const clientId = crypto.randomUUID();
-          (ws as any).clientId = clientId;
-          this.clients.set(clientId, { id: clientId, ws, subscriptions: new Set() });
-          console.log(`🔌 WebSocket Client connected: ${clientId}`);
+    try {
+      this.server = Bun.serve({
+        port: this.port,
+        fetch(req, server) {
+          if (server.upgrade(req)) return;
+          return new Response("WebSocket Broker - WebSocket only", { status: 400 });
         },
-        message: (ws, message) => {
-          try {
-            const data = JSON.parse(message.toString());
-            this.handleMessage((ws as any).clientId, data);
-          } catch (e) {
-            console.error('Invalid WebSocket message:', e);
+        websocket: {
+          open: (ws) => {
+            const clientId = crypto.randomUUID();
+            (ws as any).clientId = clientId;
+            this.clients.set(clientId, { id: clientId, ws, subscriptions: new Set() });
+            console.log(`🔌 WebSocket Client connected: ${clientId}`);
+          },
+          message: (ws, message) => {
+            try {
+              const data = JSON.parse(message.toString());
+              this.handleMessage((ws as any).clientId, data);
+            } catch (e) {
+              console.error('Invalid WebSocket message:', e);
+            }
+          },
+          close: (ws) => {
+            const clientId = (ws as any).clientId;
+            this.clients.delete(clientId);
+            console.log(`🔌 WebSocket Client disconnected: ${clientId}`);
           }
-        },
-        close: (ws) => {
-          const clientId = (ws as any).clientId;
-          this.clients.delete(clientId);
-          console.log(`🔌 WebSocket Client disconnected: ${clientId}`);
         }
-      }
-    });
+      });
 
-    console.log(`🔌 WebSocket Broker running on ws://localhost:${this.port}`);
+      console.log(`🔌 WebSocket Broker running on ws://localhost:${this.port}`);
+    } catch (err: any) {
+      this.server = null;
+      if (err?.message?.includes('EADDRINUSE') || err?.code === 'EADDRINUSE') {
+        throw new Error(`EADDRINUSE: Port ${this.port} is already in use`);
+      }
+      throw err;
+    }
   }
 
   private handleMessage(clientId: string, data: { type: string; topic?: string; payload?: any }) {

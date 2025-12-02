@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { WorkflowDefinition } from '../../types/index.ts';
 import type { Project } from '../../workflows/templates.ts';
 import { nodeDefinitions } from '../../nodes/node-definitions.ts';
-import { programmaticWorkflowExamples } from '../../workflows/programmatic-examples';
 import {
   IconSitemap,
   IconPlus,
@@ -20,7 +19,6 @@ import {
   IconTransform,
   IconTemplate,
   IconPlayerPlay,
-  IconLayoutGrid,
   IconBox,
   IconLayoutSidebarLeftCollapse,
   IconLogout,
@@ -44,45 +42,29 @@ interface ProjectSidebarProps {
   onLoadTemplate: (template: WorkflowDefinition) => void;
   onDragStart: (event: React.DragEvent, nodeType: string) => void;
   onCollapse?: () => void;
-  currentView?: 'workflows' | 'programmatic';
-  onViewChange?: (view: 'workflows' | 'programmatic') => void;
-  onSelectProgrammaticWorkflow?: (workflow: any) => void;
-  onCreateProgrammaticWorkflow?: () => void;
-  onDeleteProgrammaticWorkflow?: (id: string) => void;
   user?: { id: string; username: string; role: string } | null;
   onLogout?: () => void;
 }
 
-// Map node types to Tabler icons (reused from WorkflowNode/AddNodeModal)
 const nodeIcons: Record<string, React.ReactNode> = {
   'http-in': <IconWorld size={16} />,
   'mqtt-in': <IconDeviceAnalytics size={16} />,
-  
   'debug': <IconBug size={16} />,
   'http-response': <IconWorld size={16} />,
   'mqtt-out': <IconDeviceAnalytics size={16} />,
-  
   'function': <IconCode size={16} />,
   'filter': <IconFilter size={16} />,
   'transform': <IconTransform size={16} />,
   'template': <IconTemplate size={16} />,
-  
   'http-request': <IconWorld size={16} />,
   'delay': <IconClock size={16} />,
   'split': <IconSwitchHorizontal size={16} />,
   'join': <IconSwitchHorizontal size={16} />,
-  
   'inject': <IconPlayerPlay size={16} />,
   'trigger': <IconPlayerPlay size={16} />,
-  
-  // AI node
   'ai-generate': <IconRobot size={16} />,
-  
-  // Loop and Data nodes
   'loop': <IconRepeat size={16} />,
   'data-table': <IconTable size={16} />,
-  
-  // UI Dashboard nodes
   'ui-text': <IconCode size={16} />,
   'ui-number': <IconCode size={16} />,
   'ui-gauge': <IconCode size={16} />,
@@ -90,10 +72,10 @@ const nodeIcons: Record<string, React.ReactNode> = {
 };
 
 const categoryColors: Record<string, string> = {
-  input: "#3b82f6", // Blue
-  output: "#22c55e", // Green
-  logic: "#f59e0b", // Amber
-  data: "#ec4899", // Pink
+  input: "#3b82f6",
+  output: "#22c55e",
+  logic: "#f59e0b",
+  data: "#ec4899",
 };
 
 export function ProjectSidebar({
@@ -104,15 +86,9 @@ export function ProjectSidebar({
   onSelectWorkflow,
   onCreateProject,
   onCreateWorkflow,
-  onDeleteProject,
   onDeleteWorkflow,
   onDragStart,
   onCollapse,
-  currentView = 'workflows',
-  onViewChange,
-  onSelectProgrammaticWorkflow,
-  onCreateProgrammaticWorkflow,
-  onDeleteProgrammaticWorkflow,
   user,
   onLogout
 }: ProjectSidebarProps) {
@@ -122,7 +98,6 @@ export function ProjectSidebar({
   const [newName, setNewName] = useState('');
   const [nodeSearch, setNodeSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
-  const [showProgrammaticExamples, setShowProgrammaticExamples] = useState(true);
 
   const handleCreateProject = () => {
     if (newName.trim()) {
@@ -181,126 +156,38 @@ export function ProjectSidebar({
         </div>
       </div>
 
-      {/* Workflow Type Toggle */}
+      {/* Tabs */}
       <div className="px-3 pt-3 pb-2">
         <div className="flex p-1 bg-gray-100 rounded-lg">
           <button
-            onClick={() => onViewChange?.('workflows')}
+            onClick={() => setActiveTab('projects')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-              currentView === 'workflows'
+              activeTab === 'projects'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            <IconLayoutGrid size={13} />
-            Visual
+            <IconFolder size={13} />
+            Projects
           </button>
           <button
-            onClick={() => onViewChange?.('programmatic')}
+            onClick={() => setActiveTab('nodes')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-              currentView === 'programmatic'
+              activeTab === 'nodes'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            <IconCode size={13} />
-            Code
+            <IconBox size={13} />
+            Nodes
           </button>
         </div>
       </div>
 
-      {/* Tabs - Only show for Visual workflows */}
-      {currentView === 'workflows' && (
-        <div className="px-3 mb-2">
-          <div className="flex p-1 bg-gray-100 rounded-lg">
-            <button
-              onClick={() => setActiveTab('projects')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                activeTab === 'projects'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <IconFolder size={13} />
-              Projects
-            </button>
-            <button
-              onClick={() => setActiveTab('nodes')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                activeTab === 'nodes'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <IconBox size={13} />
-              Nodes
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-thin">
-        
-        {/* Code Workflows View */}
-        {currentView === 'programmatic' ? (
+        {activeTab === 'projects' ? (
           <div className="space-y-4">
-            {/* Example Workflows */}
-            <div>
-              <div className="flex items-center justify-between px-2 mb-2">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Examples</span>
-                <button
-                  onClick={() => setShowProgrammaticExamples(!showProgrammaticExamples)}
-                  className="text-gray-400 hover:text-blue-500 p-0.5 hover:bg-blue-50 rounded"
-                  title={showProgrammaticExamples ? 'Hide examples' : 'Show examples'}
-                >
-                  <IconCode size={12} />
-                </button>
-              </div>
-              
-              {showProgrammaticExamples && (
-                <div className="space-y-0.5">
-                  {programmaticWorkflowExamples.map((example) => (
-                    <button
-                      key={example.id}
-                      onClick={() => onSelectProgrammaticWorkflow?.(example)}
-                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors group ${
-                        currentWorkflow?.id === example.id
-                          ? 'bg-purple-50 text-purple-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      }`}
-                    >
-                      <IconCode size={14} className={currentWorkflow?.id === example.id ? 'text-purple-500' : 'text-gray-400'} />
-                      <div className="flex-1 text-left min-w-0">
-                        <div className="truncate">{example.name}</div>
-                        <div className="text-[10px] text-gray-400 truncate">{example.description}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Create New Code Workflow */}
-            <div>
-              <div className="flex items-center justify-between px-2 mb-2">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">My Workflows</span>
-                <button
-                  onClick={() => onCreateProgrammaticWorkflow?.()}
-                  className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-purple-500 transition-colors"
-                  title="Create new code workflow"
-                >
-                  <IconPlus size={14} />
-                </button>
-              </div>
-              <div className="text-center py-4 text-gray-400">
-                <p className="text-[10px]">Click + to create a new code workflow</p>
-              </div>
-            </div>
-          </div>
-        ) : activeTab === 'projects' ? (
-          <div className="space-y-4">
-            {/* Projects List */}
             <div>
               <div className="flex items-center justify-between px-2 mb-2">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Projects</span>
@@ -342,8 +229,7 @@ export function ProjectSidebar({
                       <span className="truncate flex-1 text-left">{p.name}</span>
                     </button>
 
-                    {/* Workflows for current project */}
-                    {currentProject?.id === p.id && currentView === 'workflows' && (
+                    {currentProject?.id === p.id && (
                       <div className="pl-4 mt-1 space-y-0.5 border-l border-gray-100 ml-2.5">
                         <div className="flex items-center justify-between px-2 py-1.5">
                           <span className="text-[10px] text-gray-400 font-medium">FLOWS</span>
@@ -412,16 +298,11 @@ export function ProjectSidebar({
                 ))}
               </div>
             </div>
-
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Search */}
             <div className="relative">
-              <IconSearch
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
-                size={14}
-              />
+              <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input
                 type="text"
                 placeholder="Search nodes..."
@@ -431,7 +312,6 @@ export function ProjectSidebar({
               />
             </div>
 
-            {/* Categories */}
             <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
               {categories.map((cat) => (
                 <button
@@ -448,7 +328,6 @@ export function ProjectSidebar({
               ))}
             </div>
 
-            {/* Node List */}
             <div className="space-y-2">
               {filteredNodes.map((node) => {
                 const catColor = categoryColors[node.category] || "#6b7280";
@@ -462,20 +341,13 @@ export function ProjectSidebar({
                     <div className="flex items-center gap-3">
                       <div
                         className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 shadow-sm transition-transform group-hover:scale-105"
-                        style={{
-                          backgroundColor: `${catColor}15`,
-                          color: catColor,
-                        }}
+                        style={{ backgroundColor: `${catColor}15`, color: catColor }}
                       >
                         {nodeIcons[node.type] || <IconServer size={16} />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900 text-xs truncate">
-                          {node.label}
-                        </div>
-                        <div className="text-[10px] text-gray-500 truncate">
-                          {node.type}
-                        </div>
+                        <div className="font-medium text-gray-900 text-xs truncate">{node.label}</div>
+                        <div className="text-[10px] text-gray-500 truncate">{node.type}</div>
                       </div>
                     </div>
                   </div>
@@ -492,7 +364,6 @@ export function ProjectSidebar({
         )}
       </div>
 
-      {/* User Info & Logout - Bottom */}
       {user && (
         <div className="p-3 border-t border-gray-100 bg-gray-50">
           <div className="flex items-center gap-2">

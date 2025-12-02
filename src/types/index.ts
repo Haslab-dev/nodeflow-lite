@@ -18,7 +18,7 @@ export interface NodeConfig {
 export interface WorkflowDefinition {
   id: string;
   name: string;
-  type: 'flow' | 'step' | 'code'; // New: workflow type including programmatic code
+  type: 'flow' | 'step';
   nodes: NodeConfig[];
 }
 
@@ -64,39 +64,6 @@ export interface RuntimeService {
   isRunning(): boolean;
 }
 
-// Programmatic workflow types based on workflow-reference.ts
-export type Ctx = Record<string, any>;
-export type StepFn = (ctx: Ctx) => Promise<Ctx> | Ctx;
-
-export type Step =
-  | { id: string; type: "task"; run: StepFn }
-  | { id: string; type: "parallel"; steps: Step[] }
-  | {
-      id: string;
-      type: "condition";
-      when: (ctx: Ctx) => boolean;
-      then: Step[];
-      else?: Step[];
-    };
-
-export interface CodeWorkflow {
-  id: string;
-  name: string;
-  description?: string;
-  triggers: ('http-in' | 'webhook' | 'mqtt')[];
-  steps: Step[];
-  autoStart?: boolean; // Auto-start if contains trigger nodes
-}
-
-export interface ProgrammaticWorkflow {
-  id: string;
-  name: string;
-  type: 'code';
-  codeWorkflow: CodeWorkflow;
-  createdAt: number;
-  updatedAt: number;
-}
-
 // Authentication types
 export interface User {
   id: string;
@@ -118,5 +85,4 @@ export interface AuthSession {
 export interface DatabaseSchema {
   users: User;
   auth_sessions: AuthSession;
-  workflows: ProgrammaticWorkflow;
 }

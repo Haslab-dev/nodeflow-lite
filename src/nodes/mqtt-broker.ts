@@ -65,11 +65,21 @@ export class MqttBroker implements RuntimeService {
       this.server = createServer(this.aedes.handle);
       
       await new Promise<void>((resolve, reject) => {
+        // Register error handler BEFORE listen to catch EADDRINUSE
+        this.server.once('error', (err: any) => {
+          this.server = null;
+          this.aedes = null;
+          if (err.code === 'EADDRINUSE') {
+            reject(new Error(`EADDRINUSE: Port ${this.port} is already in use`));
+          } else {
+            reject(err);
+          }
+        });
+        
         this.server.listen(this.port, () => {
           console.log(`📡 MQTT Broker (Aedes) running on mqtt://localhost:${this.port}`);
           resolve();
         });
-        this.server.on('error', reject);
       });
     } catch (error) {
       console.error('Failed to start MQTT broker:', error);

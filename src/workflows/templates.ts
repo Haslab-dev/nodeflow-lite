@@ -8,6 +8,257 @@ export interface Project {
   updatedAt: number;
 }
 
+// Hyperflow Demo Template
+const hyperflowDemoTemplate: WorkflowDefinition = {
+  id: 'template-hyperflow-demo',
+  name: '🌊 Hyperflow Demo',
+  type: 'flow',
+  nodes: [
+    {
+      id: 'inject-1',
+      type: 'inject',
+      name: 'Inject Payload',
+      config: {
+        payload: JSON.stringify({
+          user: 'Kamera',
+          items: ['apple', 'banana', 'cherry'],
+          count: 3
+        })
+      },
+      wires: [['hyperflow-1']],
+      position: { x: 100, y: 200 }
+    },
+    {
+      id: 'hyperflow-1',
+      type: 'hyperflow',
+      name: 'Hyperflow Pipeline',
+      config: {
+        code: `// Hyperflow DAG Pipeline Demo
+hyper
+  .state('user', input.user)
+  .state('items', input.items)
+  .state('processed', null)
+  
+  // Step 1: Process items
+  .step('processItems', async (ctx) => {
+    const items = ctx.items.value;
+    ctx.processed = new Signal({
+      items: items.map(i => i.toUpperCase()),
+      count: items.length
+    });
+  })
+  
+  // DAG: Parallel processing
+  .dag('parallelTasks', (g) => {
+    // Task A: Generate metadata (no deps)
+    g.node('meta', async (ctx) => {
+      ctx.meta = new Signal({
+        timestamp: Date.now(),
+        version: '1.0'
+      });
+    });
+    
+    // Task B: Generate stats (no deps)
+    g.node('stats', async (ctx) => {
+      ctx.stats = new Signal({
+        itemCount: ctx.processed.value.count,
+        user: ctx.user.value
+      });
+    });
+    
+    // Task C: Combine results (depends on meta + stats)
+    g.node('combine', ['meta', 'stats'], async (ctx) => {
+      ctx.result = new Signal({
+        data: ctx.processed.value,
+        meta: ctx.meta.value,
+        stats: ctx.stats.value,
+        status: 'completed'
+      });
+    });
+  });`
+      },
+      wires: [['debug-1']],
+      position: { x: 350, y: 200 }
+    },
+    {
+      id: 'debug-1',
+      type: 'debug',
+      name: 'Output Debug',
+      config: {
+        output: 'full'
+      },
+      wires: [[]],
+      position: { x: 600, y: 200 }
+    }
+  ]
+};
+
+// Hyperflow AI + Tools Demo Template
+const hyperflowAiToolsTemplate: WorkflowDefinition = {
+  id: 'template-hyperflow-ai-tools',
+  name: '🤖 Hyperflow AI + Tools',
+  type: 'flow',
+  nodes: [
+    {
+      id: 'inject-ai',
+      type: 'inject',
+      name: 'Inject Query',
+      config: {
+        payload: JSON.stringify({
+          query: 'What is the weather like?',
+          location: 'Tokyo'
+        })
+      },
+      wires: [['hyperflow-ai']],
+      position: { x: 100, y: 200 }
+    },
+    {
+      id: 'hyperflow-ai',
+      type: 'hyperflow',
+      name: 'AI + Tools Pipeline',
+      config: {
+        code: `// Hyperflow with AI and Tools Demo
+hyper
+  .state('query', input.query)
+  .state('location', input.location)
+  
+  // Register tools
+  .tool('getWeather', async (location) => {
+    // Simulated weather API
+    const temps = { Tokyo: 22, London: 15, NYC: 18, Paris: 17 };
+    return {
+      location,
+      temperature: temps[location] || 20,
+      condition: 'Sunny',
+      humidity: 65
+    };
+  })
+  
+  .tool('formatResponse', (data) => {
+    return \`Weather in \${data.location}: \${data.temperature}°C, \${data.condition}\`;
+  })
+  
+  // Step 1: Call weather tool
+  .step('fetchWeather', async (ctx, { callTool }) => {
+    const weather = await callTool('getWeather', ctx.location.value);
+    ctx.weather = new Signal(weather);
+  })
+  
+  // Step 2: Format the response
+  .step('format', async (ctx, { callTool }) => {
+    const formatted = await callTool('formatResponse', ctx.weather.value);
+    ctx.formatted = new Signal(formatted);
+  })
+  
+  // DAG: Parallel enrichment
+  .dag('enrich', (g) => {
+    g.node('timestamp', async (ctx) => {
+      ctx.timestamp = new Signal(new Date().toISOString());
+    });
+    
+    g.node('metadata', async (ctx) => {
+      ctx.metadata = new Signal({
+        source: 'hyperflow',
+        version: '1.0'
+      });
+    });
+    
+    g.node('result', ['timestamp', 'metadata'], async (ctx) => {
+      ctx.result = new Signal({
+        query: ctx.query.value,
+        response: ctx.formatted.value,
+        weather: ctx.weather.value,
+        timestamp: ctx.timestamp.value,
+        metadata: ctx.metadata.value
+      });
+    });
+  });`,
+        aiConfig: null
+      },
+      wires: [['debug-ai']],
+      position: { x: 350, y: 200 }
+    },
+    {
+      id: 'debug-ai',
+      type: 'debug',
+      name: 'Output',
+      config: { output: 'full' },
+      wires: [[]],
+      position: { x: 600, y: 200 }
+    }
+  ]
+};
+
+// Hyperflow DAG Demo Template
+const hyperflowDagTemplate: WorkflowDefinition = {
+  id: 'template-hyperflow-dag',
+  name: '🔀 Hyperflow DAG Demo',
+  type: 'flow',
+  nodes: [
+    {
+      id: 'inject-dag',
+      type: 'inject',
+      name: 'Inject Data',
+      config: {
+        payload: JSON.stringify({
+          value: 100,
+          multiplier: 2
+        })
+      },
+      wires: [['dag-1']],
+      position: { x: 100, y: 200 }
+    },
+    {
+      id: 'dag-1',
+      type: 'hyperflow-dag',
+      name: 'Parallel DAG',
+      config: {
+        dagName: 'compute-dag',
+        nodes: JSON.stringify([
+          {
+            id: 'double',
+            deps: [],
+            code: `ctx.doubled = new Signal(ctx.input.value.value * 2);`
+          },
+          {
+            id: 'square',
+            deps: [],
+            code: `ctx.squared = new Signal(ctx.input.value.value ** 2);`
+          },
+          {
+            id: 'multiply',
+            deps: [],
+            code: `ctx.multiplied = new Signal(ctx.input.value.value * ctx.input.value.multiplier);`
+          },
+          {
+            id: 'aggregate',
+            deps: ['double', 'square', 'multiply'],
+            code: `ctx.result = new Signal({
+              original: ctx.input.value.value,
+              doubled: ctx.doubled.value,
+              squared: ctx.squared.value,
+              multiplied: ctx.multiplied.value,
+              sum: ctx.doubled.value + ctx.squared.value + ctx.multiplied.value
+            });`
+          }
+        ])
+      },
+      wires: [['debug-dag']],
+      position: { x: 350, y: 200 }
+    },
+    {
+      id: 'debug-dag',
+      type: 'debug',
+      name: 'DAG Output',
+      config: {
+        output: 'payload'
+      },
+      wires: [[]],
+      position: { x: 600, y: 200 }
+    }
+  ]
+};
+
 // Pre-built template workflows - vertical layout
 export const templateWorkflows: WorkflowDefinition[] = [
   // Kitchen Sink - All 16 nodes in one workflow
@@ -212,7 +463,11 @@ export const templateWorkflows: WorkflowDefinition[] = [
       { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
       { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
     ]
-  }
+  },
+  // Hyperflow templates
+  hyperflowDemoTemplate,
+  hyperflowAiToolsTemplate,
+  hyperflowDagTemplate
 ];
 
 export const defaultProject: Project = {
@@ -346,6 +601,173 @@ export const defaultProject: Project = {
         { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 450, y: 370 } },
         { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
         { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
+      ]
+    },
+    // Hyperflow AI + Tools Demo
+    {
+      id: 'demo-hyperflow-ai',
+      name: '🤖 Hyperflow AI + Tools',
+      type: 'flow',
+      nodes: [
+        {
+          id: 'inject-ai-demo',
+          type: 'inject',
+          name: 'Inject Query',
+          config: {
+            payload: JSON.stringify({
+              query: 'Summarize this data',
+              items: ['apple', 'banana', 'cherry'],
+              count: 3
+            })
+          },
+          wires: [['hyperflow-ai-demo']],
+          position: { x: 100, y: 200 }
+        },
+        {
+          id: 'hyperflow-ai-demo',
+          type: 'hyperflow',
+          name: 'AI + Tools Pipeline',
+          config: {
+            code: `// Hyperflow with Tools Demo
+hyper
+  .state('query', input.query)
+  .state('items', input.items)
+  
+  // Tool: Transform items
+  .tool('transform', (items) => items.map(i => i.toUpperCase()))
+  
+  // Tool: Count items
+  .tool('count', (items) => ({ total: items.length, items }))
+  
+  // Tool: Generate summary
+  .tool('summarize', (data) => \`Processed \${data.total} items: \${data.items.join(', ')}\`)
+  
+  // Step 1: Transform
+  .step('transform', async (ctx, { callTool }) => {
+    ctx.transformed = new Signal(await callTool('transform', ctx.items.value));
+  })
+  
+  // Step 2: Count
+  .step('count', async (ctx, { callTool }) => {
+    ctx.counted = new Signal(await callTool('count', ctx.transformed.value));
+  })
+  
+  // Step 3: Summarize
+  .step('summarize', async (ctx, { callTool }) => {
+    ctx.summary = new Signal(await callTool('summarize', ctx.counted.value));
+  })
+  
+  // DAG: Final assembly
+  .dag('assemble', (g) => {
+    g.node('meta', async (ctx) => {
+      ctx.meta = new Signal({ ts: Date.now(), version: '1.0' });
+    });
+    
+    g.node('result', ['meta'], async (ctx) => {
+      ctx.result = new Signal({
+        query: ctx.query.value,
+        summary: ctx.summary.value,
+        data: ctx.counted.value,
+        meta: ctx.meta.value
+      });
+    });
+  });`
+          },
+          wires: [['debug-ai-demo']],
+          position: { x: 350, y: 200 }
+        },
+        {
+          id: 'debug-ai-demo',
+          type: 'debug',
+          name: 'Output',
+          config: { output: 'full' },
+          wires: [[]],
+          position: { x: 600, y: 200 }
+        }
+      ]
+    },
+    // Hyperflow Demo: Inject -> Hyperflow -> Debug
+    {
+      id: 'demo-hyperflow',
+      name: '🌊 Hyperflow Demo',
+      type: 'flow',
+      nodes: [
+        {
+          id: 'inject-hf',
+          type: 'inject',
+          name: 'Inject Payload',
+          config: {
+            payload: JSON.stringify({
+              user: 'Kamera',
+              items: ['apple', 'banana', 'cherry'],
+              count: 3
+            })
+          },
+          wires: [['hyperflow-hf']],
+          position: { x: 100, y: 200 }
+        },
+        {
+          id: 'hyperflow-hf',
+          type: 'hyperflow',
+          name: 'Hyperflow Pipeline',
+          config: {
+            code: `// Hyperflow DAG Pipeline Demo
+hyper
+  .state('user', input.user)
+  .state('items', input.items)
+  .state('processed', null)
+  
+  // Step 1: Process items
+  .step('processItems', async (ctx) => {
+    const items = ctx.items.value;
+    ctx.processed = new Signal({
+      items: items.map(i => i.toUpperCase()),
+      count: items.length
+    });
+  })
+  
+  // DAG: Parallel processing
+  .dag('parallelTasks', (g) => {
+    // Task A: Generate metadata (no deps)
+    g.node('meta', async (ctx) => {
+      ctx.meta = new Signal({
+        timestamp: Date.now(),
+        version: '1.0'
+      });
+    });
+    
+    // Task B: Generate stats (no deps)
+    g.node('stats', async (ctx) => {
+      ctx.stats = new Signal({
+        itemCount: ctx.processed.value.count,
+        user: ctx.user.value
+      });
+    });
+    
+    // Task C: Combine results (depends on meta + stats)
+    g.node('combine', ['meta', 'stats'], async (ctx) => {
+      ctx.result = new Signal({
+        data: ctx.processed.value,
+        meta: ctx.meta.value,
+        stats: ctx.stats.value,
+        status: 'completed'
+      });
+    });
+  });`
+          },
+          wires: [['debug-hf']],
+          position: { x: 350, y: 200 }
+        },
+        {
+          id: 'debug-hf',
+          type: 'debug',
+          name: 'Output Debug',
+          config: {
+            output: 'full'
+          },
+          wires: [[]],
+          position: { x: 600, y: 200 }
+        }
       ]
     }
   ],

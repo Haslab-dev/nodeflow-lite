@@ -4,6 +4,7 @@ import type { WorkflowDefinition } from "../types/index.ts";
 export const simpleWorkflow: WorkflowDefinition = {
   id: 'simple-http',
   name: 'Simple HTTP Request',
+  type: 'flow',
   nodes: [
     {
       id: '1',
@@ -36,6 +37,7 @@ export const simpleWorkflow: WorkflowDefinition = {
 export const filterWorkflow: WorkflowDefinition = {
   id: 'filter-transform',
   name: 'Filter and Transform',
+  type: 'flow',
   nodes: [
     {
       id: '1',
@@ -76,6 +78,7 @@ export const filterWorkflow: WorkflowDefinition = {
 export const functionWorkflow: WorkflowDefinition = {
   id: 'function-workflow',
   name: 'Function Processing',
+  type: 'flow',
   nodes: [
     {
       id: '1',
@@ -115,6 +118,7 @@ export const functionWorkflow: WorkflowDefinition = {
 export const complexWorkflow: WorkflowDefinition = {
   id: 'complex-pipeline',
   name: 'Complex Data Pipeline',
+  type: 'flow',
   nodes: [
     {
       id: '1',
@@ -176,6 +180,161 @@ export const complexWorkflow: WorkflowDefinition = {
       name: 'Log Email',
       config: {},
       wires: [[]]
+    }
+  ]
+};
+
+// Example 5: Hyperflow Demo - Inject -> Hyperflow -> Debug
+export const hyperflowDemoWorkflow: WorkflowDefinition = {
+  id: 'hyperflow-demo',
+  name: 'Hyperflow Demo',
+  type: 'flow',
+  nodes: [
+    {
+      id: 'inject-1',
+      type: 'inject',
+      name: 'Inject Payload',
+      config: {
+        payload: JSON.stringify({
+          user: 'Kamera',
+          items: ['apple', 'banana', 'cherry'],
+          count: 3
+        })
+      },
+      wires: [['hyperflow-1']],
+      position: { x: 100, y: 200 }
+    },
+    {
+      id: 'hyperflow-1',
+      type: 'hyperflow',
+      name: 'Hyperflow Pipeline',
+      config: {
+        code: `// Hyperflow DAG Pipeline Demo
+hyper
+  .state('user', input.user)
+  .state('items', input.items)
+  .state('processed', null)
+  
+  // Step 1: Process items
+  .step('processItems', async (ctx) => {
+    const items = ctx.items.value;
+    ctx.processed = new Signal({
+      items: items.map(i => i.toUpperCase()),
+      count: items.length
+    });
+  })
+  
+  // DAG: Parallel processing
+  .dag('parallelTasks', (g) => {
+    // Task A: Generate metadata (no deps)
+    g.node('meta', async (ctx) => {
+      ctx.meta = new Signal({
+        timestamp: Date.now(),
+        version: '1.0'
+      });
+    });
+    
+    // Task B: Generate stats (no deps)
+    g.node('stats', async (ctx) => {
+      ctx.stats = new Signal({
+        itemCount: ctx.processed.value.count,
+        user: ctx.user.value
+      });
+    });
+    
+    // Task C: Combine results (depends on meta + stats)
+    g.node('combine', ['meta', 'stats'], async (ctx) => {
+      ctx.result = new Signal({
+        data: ctx.processed.value,
+        meta: ctx.meta.value,
+        stats: ctx.stats.value,
+        status: 'completed'
+      });
+    });
+  });`
+      },
+      wires: [['debug-1']],
+      position: { x: 350, y: 200 }
+    },
+    {
+      id: 'debug-1',
+      type: 'debug',
+      name: 'Output Debug',
+      config: {
+        output: 'full'
+      },
+      wires: [[]],
+      position: { x: 600, y: 200 }
+    }
+  ]
+};
+
+// Example 6: Hyperflow DAG Node Demo
+export const hyperflowDagWorkflow: WorkflowDefinition = {
+  id: 'hyperflow-dag-demo',
+  name: 'Hyperflow DAG Demo',
+  type: 'flow',
+  nodes: [
+    {
+      id: 'inject-dag',
+      type: 'inject',
+      name: 'Inject Data',
+      config: {
+        payload: JSON.stringify({
+          value: 100,
+          multiplier: 2
+        })
+      },
+      wires: [['dag-1']],
+      position: { x: 100, y: 200 }
+    },
+    {
+      id: 'dag-1',
+      type: 'hyperflow-dag',
+      name: 'Parallel DAG',
+      config: {
+        dagName: 'compute-dag',
+        nodes: JSON.stringify([
+          {
+            id: 'double',
+            deps: [],
+            code: `ctx.doubled = new Signal(ctx.input.value.value * 2);`
+          },
+          {
+            id: 'square',
+            deps: [],
+            code: `ctx.squared = new Signal(ctx.input.value.value ** 2);`
+          },
+          {
+            id: 'multiply',
+            deps: [],
+            code: `ctx.multiplied = new Signal(ctx.input.value.value * ctx.input.value.multiplier);`
+          },
+          {
+            id: 'aggregate',
+            deps: ['double', 'square', 'multiply'],
+            code: `ctx.result = new Signal({
+              original: ctx.input.value.value,
+              doubled: ctx.doubled.value,
+              squared: ctx.squared.value,
+              multiplied: ctx.multiplied.value,
+              sum: ctx.doubled.value + ctx.squared.value + ctx.multiplied.value
+            });`
+          }
+        ])
+      },
+      wires: [['debug-dag']],
+      position: { x: 350, y: 200 }
+    },
+    {
+      id: 'debug-dag',
+      type: 'debug',
+      name: 'DAG Output',
+      config: {
+        output: 'payload'
+      },
+      wires: [[]],
+      position: { x: 600, y: 200 }
     }
   ]
 };

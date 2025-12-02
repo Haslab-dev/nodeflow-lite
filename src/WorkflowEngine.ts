@@ -7,6 +7,7 @@ import type {
   NodeExecutor
 } from "./types/index.ts";
 import { registerBuiltInNodes } from "./nodes/built-in-nodes.ts";
+import { registerHyperflowNodes } from "./nodes/hyperflow-nodes.ts";
 
 export class WorkflowEngine extends EventEmitter {
   private nodeTypes: Map<string, NodeExecutor> = new Map();
@@ -159,6 +160,7 @@ export class WorkflowEngine extends EventEmitter {
   // Register built-in node types
   private registerBuiltInNodes() {
     registerBuiltInNodes(this);
+    registerHyperflowNodes(this);
   }
 
   // Logging

@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { User, AuthSession, ProgrammaticWorkflow } from "../types/index.ts";
+import type { User, AuthSession } from "../types/index.ts";
 
 export class WorkflowDatabase {
   private db: Database;
@@ -30,18 +30,6 @@ export class WorkflowDatabase {
         expires_at INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      )
-    `);
-
-    // Programmatic workflows table
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS workflows (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL DEFAULT 'code',
-        code_workflow TEXT NOT NULL, -- JSON string
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
       )
     `);
 
@@ -142,109 +130,6 @@ export class WorkflowDatabase {
       [Date.now()]
     );
     return result.changes;
-  }
-
-  // Workflow management
-  async createWorkflow(workflow: Omit<ProgrammaticWorkflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProgrammaticWorkflow> {
-    const id = crypto.randomUUID();
-    const now = Date.now();
-    
-    this.db.run(
-      `INSERT INTO workflows (id, name, type, code_workflow, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, workflow.name, workflow.type, JSON.stringify(workflow.codeWorkflow), now, now]
-    );
-
-    return { id, ...workflow, createdAt: now, updatedAt: now };
-  }
-
-  async updateWorkflow(id: string, workflow: Partial<Omit<ProgrammaticWorkflow, 'id' | 'createdAt' | 'updatedAt'>>): Promise<ProgrammaticWorkflow | null> {
-    const existing = await this.getWorkflowById(id);
-    if (!existing) return null;
-
-    const updates: string[] = [];
-    const values: any[] = [];
-
-    if (workflow.name !== undefined) {
-      updates.push("name = ?");
-      values.push(workflow.name);
-    }
-    
-    if (workflow.codeWorkflow !== undefined) {
-      updates.push("code_workflow = ?");
-      values.push(JSON.stringify(workflow.codeWorkflow));
-    }
-
-    if (updates.length === 0) return existing;
-
-    updates.push("updated_at = ?");
-    values.push(Date.now());
-    values.push(id);
-
-    this.db.run(
-      `UPDATE workflows SET ${updates.join(", ")} WHERE id = ?`,
-      values
-    );
-
-    return await this.getWorkflowById(id);
-  }
-
-  async getWorkflowById(id: string): Promise<ProgrammaticWorkflow | null> {
-    const workflow = this.db.query(
-      `SELECT id, name, type, code_workflow, created_at, updated_at FROM workflows WHERE id = ?`
-    ).get(id) as any;
-    
-    if (!workflow) return null;
-    
-    return {
-      id: workflow.id,
-      name: workflow.name,
-      type: workflow.type,
-      codeWorkflow: JSON.parse(workflow.code_workflow),
-      createdAt: workflow.created_at,
-      updatedAt: workflow.updated_at
-    };
-  }
-
-  async getAllWorkflows(): Promise<ProgrammaticWorkflow[]> {
-    const workflows = this.db.query(
-      `SELECT id, name, type, code_workflow, created_at, updated_at FROM workflows ORDER BY updated_at DESC`
-    ).all() as any[];
-    
-    return workflows.map(workflow => ({
-      id: workflow.id,
-      name: workflow.name,
-      type: workflow.type,
-      codeWorkflow: JSON.parse(workflow.code_workflow),
-      createdAt: workflow.created_at,
-      updatedAt: workflow.updated_at
-    }));
-  }
-
-  async deleteWorkflow(id: string): Promise<boolean> {
-    const result = this.db.run(
-      `DELETE FROM workflows WHERE id = ?`,
-      [id]
-    );
-    return result.changes > 0;
-  }
-
-  // Utility methods
-  async getWorkflowsByTrigger(trigger: 'http-in' | 'webhook' | 'mqtt'): Promise<ProgrammaticWorkflow[]> {
-    const workflows = this.db.query(
-      `SELECT id, name, type, code_workflow, created_at, updated_at FROM workflows`
-    ).all() as any[];
-    
-    return workflows
-      .map(workflow => ({
-        id: workflow.id,
-        name: workflow.name,
-        type: workflow.type,
-        codeWorkflow: JSON.parse(workflow.code_workflow),
-        createdAt: workflow.created_at,
-        updatedAt: workflow.updated_at
-      }))
-      .filter(workflow => workflow.codeWorkflow.triggers.includes(trigger));
   }
 
   close() {

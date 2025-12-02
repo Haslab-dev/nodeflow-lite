@@ -13,7 +13,7 @@ import {
   type BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconPlayerStop, IconCode, IconLogin, IconDashboard } from '@tabler/icons-react';
+import { IconDeviceFloppy, IconBug, IconInfoCircle, IconSitemap, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconBrush, IconPlayerPlay, IconPlayerStop, IconLogin, IconDashboard } from '@tabler/icons-react';
 
 import WorkflowNode from './components/WorkflowNode.tsx';
 import { NodeConfigPanel } from './components/NodeConfigPanel.tsx';
@@ -96,7 +96,6 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   
   // UI state
-  const [currentView, setCurrentView] = useState<'workflows' | 'programmatic'>('workflows');
   const [isRunning, setIsRunning] = useState(false);
   const [executingNodeId, setExecutingNodeId] = useState<string | null>(null);
 
@@ -213,11 +212,12 @@ export default function App() {
   // Refs to avoid circular dependencies
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
-  const currentWorkflowRef = useRef(currentWorkflow);
+  const currentWorkflowRef = useRef<any>(currentWorkflow);
   
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
-  useEffect(() => { currentWorkflowRef.current = currentWorkflow; }, [currentWorkflow]);
+  // Don't auto-sync currentWorkflow to ref - we'll manually set it for code workflows
+  // useEffect(() => { currentWorkflowRef.current = currentWorkflow; }, [currentWorkflow]);
 
   // Trigger inject node - uses refs to avoid circular deps
   const authTokenRef = useRef(authToken);
@@ -332,12 +332,6 @@ export default function App() {
   const saveCurrentWorkflow = () => {
     if (!currentWorkflow) return;
     
-    // For programmatic/code workflows, trigger the code editor save
-    if (currentView === 'programmatic' && codeEditorRef.current) {
-      codeEditorRef.current.save();
-      return;
-    }
-    
     // For visual workflows in code view mode
     if (viewMode === 'code' && codeEditorRef.current) {
       codeEditorRef.current.save();
@@ -368,38 +362,6 @@ export default function App() {
     }
     
     await triggerInject(injectNode.id);
-  };
-
-  // Run code workflow
-  const runCodeWorkflow = async () => {
-    if (!currentWorkflow || currentView !== 'programmatic') return;
-    
-    try {
-      const response = await fetch('/api/workflows/code/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ 
-          workflow: currentWorkflow,
-          initial: {} 
-        })
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to execute workflow');
-      }
-      
-      const result = await response.json();
-      console.log('Code workflow executed:', result);
-    } catch (err) {
-      setDebugLogs(prev => [...prev, { 
-        timestamp: new Date().toLocaleTimeString(), 
-        message: `❌ ${(err as Error).message}` 
-      }]);
-    }
   };
 
   // Deploy workflow - registers all listeners
@@ -505,48 +467,9 @@ export default function App() {
     loadWorkflowToCanvas(newWorkflow);
   };
 
-  // Programmatic workflow handlers
-  const handleSelectProgrammaticWorkflow = (workflow: any) => {
-    setCurrentWorkflow(workflow);
-  };
-
-  const handleCreateProgrammaticWorkflow = () => {
-    // Create a new empty programmatic workflow
-    const newWorkflow: any = {
-      id: `code-workflow-${Date.now()}`,
-      name: 'New Code Workflow',
-      description: 'A new code-based workflow',
-      type: 'code',
-      triggers: [],
-      steps: [],
-      autoStart: false,
-      nodes: [] // Required by WorkflowDefinition but not used for code workflows
-    };
-    setCurrentWorkflow(newWorkflow);
-  };
-
-  const handleDeleteProgrammaticWorkflow = (id: string) => {
-    // For now, just clear the current workflow if it matches
-    if (currentWorkflow?.id === id) {
-      setCurrentWorkflow(null);
-    }
-  };
-
   const codeEditorRef = useRef<{ save: () => boolean; format: () => void } | null>(null);
 
-  const handleCodeSave = (workflow: WorkflowDefinition) => {
-    // Check if this is a code workflow (programmatic view)
-    if (currentView === 'programmatic' || workflow.type === 'code') {
-      // For code workflows, just update the current workflow state
-      setCurrentWorkflow(workflow);
-      // Show success feedback
-      setDebugLogs(prev => [...prev, { 
-        timestamp: new Date().toLocaleTimeString(), 
-        message: `✅ Code workflow saved: ${workflow.name}` 
-      }]);
-      return;
-    }
-    
+  const handleCodeSave = async (workflow: WorkflowDefinition) => {
     // For visual workflows, save to project
     if (!currentProject) return;
     setProjects(prev => prev.map(p => p.id === currentProject.id ? { ...p, workflows: p.workflows.map(w => w.id === workflow.id ? workflow : w), updatedAt: Date.now() } : p));
@@ -689,11 +612,6 @@ export default function App() {
           onLoadTemplate={handleLoadTemplate}
           onDragStart={onDragStart}
           onCollapse={() => setLeftSidebarVisible(false)}
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          onSelectProgrammaticWorkflow={handleSelectProgrammaticWorkflow}
-          onCreateProgrammaticWorkflow={handleCreateProgrammaticWorkflow}
-          onDeleteProgrammaticWorkflow={handleDeleteProgrammaticWorkflow}
           user={user}
           onLogout={handleLogout}
         />
@@ -755,41 +673,8 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Code Workflow Actions */}
-            {currentView === 'programmatic' && currentWorkflow && (
-              <button
-                onClick={async () => {
-                  setIsRunning(true);
-                  setRightSidebarVisible(true);
-                  setRightSidebarTab('debug');
-                  try {
-                    await runCodeWorkflow();
-                  } finally {
-                    setTimeout(() => setIsRunning(false), 1000);
-                  }
-                }}
-                disabled={isRunning}
-                className={`btn btn-sm text-white border-transparent transition-all ${
-                  isRunning 
-                    ? 'bg-purple-400 cursor-wait animate-pulse' 
-                    : 'bg-purple-500 hover:bg-purple-600'
-                }`}
-                title="Run code workflow"
-              >
-                {isRunning ? (
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                ) : (
-                  <IconPlayerPlay size={16} />
-                )}
-                {isRunning ? 'Running...' : 'Run'}
-              </button>
-            )}
-
-            {/* Visual Workflow Actions */}
-            {currentWorkflow && currentView === 'workflows' && (
+            {/* Workflow Actions */}
+            {currentWorkflow && (
               <>
                 {/* View Mode Tabs */}
                 <div className="flex p-1 bg-gray-100 rounded-lg">
@@ -886,25 +771,7 @@ export default function App() {
 
         {/* Canvas Area */}
         <div className="flex-1 flex overflow-hidden relative">
-          {currentView === 'programmatic' && currentWorkflow ? (
-            <div className="flex-1 overflow-hidden bg-gray-50">
-              <CodeEditor
-                ref={codeEditorRef}
-                workflow={currentWorkflow}
-                onSave={handleCodeSave}
-                onClose={() => setCurrentWorkflow(null)}
-                inline={true}
-              />
-            </div>
-          ) : currentView === 'programmatic' ? (
-            <div className="flex-1 flex items-center justify-center bg-gray-50">
-              <div className="text-center text-gray-500">
-                <IconCode size={48} className="mx-auto mb-4 opacity-20" />
-                <h3 className="text-lg font-medium mb-2">No Code Workflow Selected</h3>
-                <p className="text-sm">Select a code workflow from the sidebar to start editing</p>
-              </div>
-            </div>
-          ) : viewMode === 'builder' ? (
+          {viewMode === 'builder' ? (
             <div ref={reactFlowWrapper} className="flex-1 overflow-hidden bg-gray-50">
               <ReactFlow
                 nodes={nodes}
@@ -931,7 +798,7 @@ export default function App() {
                 />
               </ReactFlow>
             </div>
-          ) : currentView === 'workflows' ? (
+          ) : (
             <div className="flex-1 overflow-hidden bg-gray-50">
               <CodeEditor
                 ref={codeEditorRef}
@@ -941,7 +808,7 @@ export default function App() {
                 inline={true}
               />
             </div>
-          ) : null}
+          )}
           
           {/* Right Sidebar - Info and Debug with Tabs */}
           {rightSidebarVisible && (

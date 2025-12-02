@@ -336,6 +336,100 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     configFields: [
       { name: 'label', label: 'Label', type: 'string', default: 'Switch' }
     ]
+  },
+
+  // Hyperflow nodes - DAG-based workflow execution
+  {
+    type: 'hyperflow',
+    label: 'Hyperflow',
+    category: 'logic',
+    color: '#ec4899',
+    inputs: 1,
+    outputs: 1,
+    icon: '🌊',
+    description: 'Execute a Hyperflow pipeline with DAG support',
+    configFields: [
+      { name: 'code', label: 'Pipeline Code', type: 'code', language: 'javascript', default: `// Define your Hyperflow pipeline
+// Available: hyper.state(), hyper.step(), hyper.dag(), hyper.tool(), hyper.ai()
+
+hyper
+  .state('result', null)
+  .step('process', async (ctx, helpers) => {
+    ctx.result = new Signal({
+      processed: true,
+      data: ctx.input.value,
+      timestamp: Date.now()
+    });
+  });` },
+      { name: 'aiConfig', label: 'AI Configuration (optional)', type: 'ai-config', default: '' }
+    ]
+  },
+  {
+    type: 'hyperflow-step',
+    label: 'Hyperflow Step',
+    category: 'logic',
+    color: '#ec4899',
+    inputs: 1,
+    outputs: 1,
+    icon: '🔹',
+    description: 'Single step in a Hyperflow pipeline',
+    configFields: [
+      { name: 'stepName', label: 'Step Name', type: 'string', default: 'process' },
+      { name: 'code', label: 'Step Code', type: 'code', language: 'javascript', default: `// Transform the message
+msg.payload.processed = true;
+msg.payload.timestamp = Date.now();
+return msg;` }
+    ]
+  },
+  {
+    type: 'hyperflow-dag',
+    label: 'Hyperflow DAG',
+    category: 'logic',
+    color: '#ec4899',
+    inputs: 1,
+    outputs: 1,
+    icon: '🔀',
+    description: 'Execute parallel DAG nodes with dependencies',
+    configFields: [
+      { name: 'dagName', label: 'DAG Name', type: 'string', default: 'parallel-tasks' },
+      { name: 'nodes', label: 'DAG Nodes (JSON)', type: 'code', language: 'json', default: `[
+  {
+    "id": "task1",
+    "deps": [],
+    "code": "ctx.task1 = new Signal({ result: 'Task 1 done' });"
+  },
+  {
+    "id": "task2", 
+    "deps": [],
+    "code": "ctx.task2 = new Signal({ result: 'Task 2 done' });"
+  },
+  {
+    "id": "combine",
+    "deps": ["task1", "task2"],
+    "code": "ctx.combined = new Signal({ task1: ctx.task1.value, task2: ctx.task2.value });"
+  }
+]` }
+    ]
+  },
+  {
+    type: 'hyperflow-tool',
+    label: 'Hyperflow Tool',
+    category: 'logic',
+    color: '#ec4899',
+    inputs: 1,
+    outputs: 1,
+    icon: '🔧',
+    description: 'Execute a tool function on input data',
+    configFields: [
+      { name: 'toolName', label: 'Tool Name', type: 'string', default: 'transform' },
+      { name: 'inputPath', label: 'Input Path', type: 'string', default: 'payload' },
+      { name: 'toolCode', label: 'Tool Code', type: 'code', language: 'javascript', default: `// Transform input data
+return {
+  ...input,
+  transformed: true,
+  timestamp: Date.now()
+};` }
+    ]
   }
 ];
 

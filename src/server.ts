@@ -1,19 +1,106 @@
 import index from "./ui/index.html";
 import { WorkflowEngine } from "./WorkflowEngine.ts";
-import { CodeWorkflowEngine } from "./CodeWorkflowEngine.ts";
 import { HttpInService, registerRuntimeNodes, clearRuntimeSubscriptions } from "./nodes/runtime-nodes.ts";
 import { MqttBroker } from "./nodes/mqtt-broker.ts";
 import { WebSocketBroker } from "./nodes/websocket-broker.ts";
 import { authService } from "./auth/index.ts";
-import { db } from "./database/index.ts";
-import { programmaticWorkflowExamples } from "./workflows/programmatic-examples.ts";
-import type { WorkflowDefinition, NodeConfig, ProgrammaticWorkflow } from "./types/index.ts";
+import type { WorkflowDefinition, NodeConfig } from "./types/index.ts";
+
+// Protected ports that should never be killed (our own UI server)
+const PROTECTED_PORTS = [3000];
+
+// Get current process ID to avoid killing ourselves
+const CURRENT_PID = process.pid;
+
+// Utility to kill process on a specific port (excluding our own process)
+async function killProcessOnPort(port: number): Promise<boolean> {
+  // Never kill protected ports
+  if (PROTECTED_PORTS.includes(port)) {
+    console.warn(`⚠️ Port ${port} is protected, skipping kill`);
+    return false;
+  }
+  
+  try {
+    // Find PID using lsof with more specific filtering (macOS/Linux)
+    // -i TCP:port -s TCP:LISTEN ensures we only get the listening process
+    const findProc = Bun.spawn(['lsof', '-ti', `TCP:${port}`, '-sTCP:LISTEN'], {
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+    const output = await new Response(findProc.stdout).text();
+    const pids = output.trim().split('\n').filter(p => p && p.trim());
+    
+    if (pids.length === 0) {
+      // Fallback: try without TCP filter
+      const findProc2 = Bun.spawn(['lsof', '-ti', `:${port}`], {
+        stdout: 'pipe',
+        stderr: 'pipe'
+      });
+      const output2 = await new Response(findProc2.stdout).text();
+      const pids2 = output2.trim().split('\n').filter(p => p && p.trim());
+      if (pids2.length === 0) return false;
+      pids.push(...pids2);
+    }
+    
+    // Filter out our own process and deduplicate
+    const uniquePids = [...new Set(pids)].filter(pid => {
+      const pidNum = parseInt(pid, 10);
+      return !isNaN(pidNum) && pidNum !== CURRENT_PID;
+    });
+    
+    if (uniquePids.length === 0) {
+      console.warn(`⚠️ No external process found on port ${port} (only our own process)`);
+      return false;
+    }
+    
+    // Kill each external PID
+    for (const pid of uniquePids) {
+      console.log(`⚠️ Killing external process ${pid} on port ${port}`);
+      Bun.spawn(['kill', '-9', pid]);
+    }
+    
+    // Wait for port to be released
+    await new Promise(r => setTimeout(r, 500));
+    return true;
+  } catch (err) {
+    console.error(`Failed to kill process on port ${port}:`, err);
+    return false;
+  }
+}
+
+// Start service with port conflict handling
+async function startServiceWithRetry<T extends { start(): Promise<void>; isRunning(): boolean }>(
+  service: T,
+  port: number,
+  serviceName: string,
+  maxRetries: number = 2
+): Promise<boolean> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await service.start();
+      return true;
+    } catch (err: any) {
+      const isPortInUse = err?.code === 'EADDRINUSE' || 
+                          err?.message?.includes('EADDRINUSE') ||
+                          err?.message?.includes('address already in use');
+      
+      if (isPortInUse && attempt < maxRetries) {
+        console.warn(`⚠️ ${serviceName} port ${port} in use, killing existing process...`);
+        await killProcessOnPort(port);
+        continue;
+      }
+      
+      console.error(`❌ Failed to start ${serviceName} on port ${port}:`, err);
+      return false;
+    }
+  }
+  return false;
+}
 
 const httpInService = new HttpInService(3001);
 const mqttBroker = new MqttBroker(1883);
 const wsBroker = new WebSocketBroker(1884);
 const engine = new WorkflowEngine();
-const codeEngine = new CodeWorkflowEngine();
 
 const mqttServiceAdapter = {
   subscribe: (topic: string, handler: any) => mqttBroker.subscribe(topic, handler),
@@ -37,60 +124,6 @@ registerRuntimeNodes(engine, httpInService, mqttServiceAdapter as any, wsService
 
 // Initialize authentication and default admin user
 await authService.initializeDefaultAdmin();
-
-// Load all programmatic workflows from database
-const programmaticWorkflows = await db.getAllWorkflows();
-for (const workflow of programmaticWorkflows) {
-  codeEngine.registerWorkflow(workflow.codeWorkflow);
-}
-
-// Register example code workflows (these have actual function implementations)
-for (const example of programmaticWorkflowExamples) {
-  codeEngine.registerWorkflow(example);
-}
-console.log(`✅ Registered ${programmaticWorkflowExamples.length} example code workflows`);
-
-// Setup code workflow triggers
-codeEngine.on('httpTrigger', (workflow) => {
-  // Register HTTP endpoint for workflow
-  httpInService.registerRoute(`/webhook/${workflow.id}`, 'POST', async (msg) => {
-    const ctx = {
-      httpRequest: {
-        method: msg.metadata?.method,
-        url: msg.metadata?.path,
-        headers: msg.metadata?.headers,
-        body: msg.payload
-      }
-    };
-    await codeEngine.executeWorkflow(workflow.id, ctx);
-  });
-});
-
-codeEngine.on('webhookTrigger', (workflow) => {
-  // Register webhook endpoint for workflow
-  httpInService.registerRoute(`/webhook/${workflow.id}`, 'POST', async (msg) => {
-    const ctx = {
-      webhook: {
-        event: msg.metadata?.path?.split('/').pop(),
-        data: msg.payload
-      }
-    };
-    await codeEngine.executeWorkflow(workflow.id, ctx);
-  });
-});
-
-codeEngine.on('mqttTrigger', (workflow) => {
-  // Register MQTT subscription for workflow
-  mqttBroker.subscribe(`workflow/${workflow.id}/#`, async (msg) => {
-    const ctx = {
-      mqtt: {
-        topic: msg.metadata?.topic,
-        payload: msg.payload
-      }
-    };
-    await codeEngine.executeWorkflow(workflow.id, ctx);
-  });
-});
 
 interface LogEntry {
   timestamp: string;
@@ -185,28 +218,6 @@ engine.on('ui-update', (data: any) => {
   uiWidgets.set(data.nodeId, data);
 });
 
-// Code workflow logging
-codeEngine.on('log', (msg: string) => {
-  debugLogs.push({
-    timestamp: new Date().toLocaleTimeString(),
-    message: `[Code] ${msg}`
-  });
-});
-
-codeEngine.on('error', (msg: string) => {
-  debugLogs.push({
-    timestamp: new Date().toLocaleTimeString(),
-    message: `[Code] ❌ ${msg}`
-  });
-});
-
-codeEngine.on('workflowCompleted', (workflowId: string, ctx: any) => {
-  debugLogs.push({
-    timestamp: new Date().toLocaleTimeString(),
-    message: `[Code] ✅ Workflow completed: ${workflowId}`
-  });
-});
-
 let deployedWorkflow: WorkflowDefinition | null = null;
 let currentExecutingNodeId: string | null = null;
 
@@ -238,54 +249,6 @@ const apiHandlers = {
       success: true,
       user: { id: user.id, username: user.username, role: user.role }
     };
-  },
-
-  // Programmatic workflow endpoints
-  async createProgrammaticWorkflow(workflow: Omit<ProgrammaticWorkflow, 'id' | 'createdAt' | 'updatedAt'>) {
-    const created = await db.createWorkflow(workflow);
-    codeEngine.registerWorkflow(created.codeWorkflow);
-    return { success: true, workflow: created };
-  },
-
-  async updateProgrammaticWorkflow(id: string, workflow: Partial<Omit<ProgrammaticWorkflow, 'id' | 'createdAt' | 'updatedAt'>>) {
-    const updated = await db.updateWorkflow(id, workflow);
-    if (!updated) {
-      return { success: false, error: 'Workflow not found' };
-    }
-    // Re-register workflow with updated steps
-    codeEngine.removeWorkflow(id);
-    codeEngine.registerWorkflow(updated.codeWorkflow);
-    return { success: true, workflow: updated };
-  },
-
-  async deleteProgrammaticWorkflow(id: string) {
-    const success = await db.deleteWorkflow(id);
-    if (success) {
-      codeEngine.removeWorkflow(id);
-    }
-    return { success };
-  },
-
-  async getProgrammaticWorkflow(id: string) {
-    const workflow = await db.getWorkflowById(id);
-    if (!workflow) {
-      return { success: false, error: 'Workflow not found' };
-    }
-    return { success: true, workflow };
-  },
-
-  async getAllProgrammaticWorkflows() {
-    const workflows = await db.getAllWorkflows();
-    return { success: true, workflows };
-  },
-
-  async executeProgrammaticWorkflow(id: string, initial: any = {}) {
-    try {
-      const result = await codeEngine.executeWorkflow(id, initial);
-      return { success: true, result };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
   },
 
   // Deploy workflow - registers all listeners (http-in, mqtt-in)
@@ -461,103 +424,7 @@ Bun.serve({
       }
     },
     
-    // Programmatic workflow routes
-    "/api/workflows/code": {
-      GET: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-        
-        const result = await apiHandlers.getAllProgrammaticWorkflows();
-        return Response.json(result);
-      },
-      
-      POST: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-        
-        const workflow = await req.json();
-        const result = await apiHandlers.createProgrammaticWorkflow(workflow);
-        return Response.json(result);
-      }
-    },
-    
-    "/api/workflows/code/:id": {
-      GET: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-
-        const url = new URL(req.url);
-        const id = url.pathname.split('/').pop();
-        if (!id) return Response.json({ error: 'ID required' }, { status: 400 });
-        const result = await apiHandlers.getProgrammaticWorkflow(id);
-        return Response.json(result);
-      },
-      
-      PUT: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-
-        const url = new URL(req.url);
-        const id = url.pathname.split('/').pop();
-        if (!id) return Response.json({ error: 'ID required' }, { status: 400 });
-        const workflow = await req.json();
-        const result = await apiHandlers.updateProgrammaticWorkflow(id, workflow);
-        return Response.json(result);
-      },
-      
-      DELETE: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-
-        const url = new URL(req.url);
-        const id = url.pathname.split('/').pop();
-        if (!id) return Response.json({ error: 'ID required' }, { status: 400 });
-        const result = await apiHandlers.deleteProgrammaticWorkflow(id);
-        return Response.json(result);
-      }
-    },
-    
-    "/api/workflows/code/:id/execute": {
-      POST: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-
-        const url = new URL(req.url);
-        const id = url.pathname.split('/').slice(-2, -1)[0];
-        if (!id) return Response.json({ error: 'ID required' }, { status: 400 });
-        const { initial } = await req.json();
-        const result = await apiHandlers.executeProgrammaticWorkflow(id, initial);
-        return Response.json(result);
-      }
-    },
-    
-    // Execute code workflow by ID (uses pre-registered workflows with actual functions)
-    "/api/workflows/code/execute": {
-      POST: async (req: any) => {
-        const authResult = await checkAuth(req);
-        if (authResult.response) return authResult.response;
-
-        try {
-          const { workflow, initial = {} } = await req.json();
-          if (!workflow || !workflow.id) {
-            return Response.json({ error: 'Invalid workflow - ID required' }, { status: 400 });
-          }
-          
-          // Execute the pre-registered workflow by ID
-          const registeredWorkflow = codeEngine.getWorkflow(workflow.id);
-          if (!registeredWorkflow) {
-            return Response.json({ error: `Workflow not found: ${workflow.id}` }, { status: 404 });
-          }
-          
-          const result = await codeEngine.executeWorkflow(workflow.id, initial);
-          return Response.json({ success: true, result });
-        } catch (error) {
-          return Response.json({ success: false, error: (error as Error).message }, { status: 500 });
-        }
-      }
-    },
-    
-    // Existing workflow routes
+    // Workflow routes
     "/api/workflow/deploy": {
       POST: async (req: any) => {
         const authResult = await checkAuth(req);
@@ -724,15 +591,19 @@ Bun.serve({
 
 console.log("🚀 NodeFlow server running at http://localhost:3000");
 
-// Auto-start services
+// Auto-start services with port conflict handling
 (async () => {
-  try {
-    await httpInService.start();
-    await mqttBroker.start();
-    await wsBroker.start();
-    console.log("✅ HTTP, MQTT, and WebSocket services started automatically");
-  } catch (err) {
-    console.error("❌ Failed to start services:", err);
+  const results = await Promise.all([
+    startServiceWithRetry(httpInService, 3001, 'HTTP Input'),
+    startServiceWithRetry(mqttBroker, 1883, 'MQTT Broker'),
+    startServiceWithRetry(wsBroker, 1884, 'WebSocket Broker')
+  ]);
+  
+  const allStarted = results.every(r => r);
+  if (allStarted) {
+    console.log("✅ All services started successfully");
+  } else {
+    console.warn("⚠️ Some services failed to start");
   }
 })();
 
@@ -741,11 +612,15 @@ setInterval(async () => {
   try {
     if (!httpInService.isRunning()) {
       console.warn("⚠️ HTTP service stopped, restarting...");
-      await httpInService.start();
+      await startServiceWithRetry(httpInService, 3001, 'HTTP Input');
     }
     if (!mqttBroker.isRunning()) {
       console.warn("⚠️ MQTT broker stopped, restarting...");
-      await mqttBroker.start();
+      await startServiceWithRetry(mqttBroker, 1883, 'MQTT Broker');
+    }
+    if (!wsBroker.isRunning()) {
+      console.warn("⚠️ WebSocket broker stopped, restarting...");
+      await startServiceWithRetry(wsBroker, 1884, 'WebSocket Broker');
     }
   } catch (err) {
     console.error("❌ Health check failed:", err);

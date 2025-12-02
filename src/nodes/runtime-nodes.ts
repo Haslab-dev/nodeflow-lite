@@ -25,42 +25,51 @@ export class HttpInService implements RuntimeService {
   async start(): Promise<void> {
     if (this.server) return;
 
-    this.server = Bun.serve({
-      port: this.port,
-      fetch: async (req) => {
-        const url = new URL(req.url);
-        const key = `${req.method}:${url.pathname}`;
-        const handler = this.routes.get(key);
+    try {
+      this.server = Bun.serve({
+        port: this.port,
+        fetch: async (req) => {
+          const url = new URL(req.url);
+          const key = `${req.method}:${url.pathname}`;
+          const handler = this.routes.get(key);
 
-        if (handler) {
-          let body = {};
-          if (req.method !== 'GET') {
-            try {
-              body = await req.json() as Record<string, unknown>;
-            } catch { body = {}; }
+          if (handler) {
+            let body = {};
+            if (req.method !== 'GET') {
+              try {
+                body = await req.json() as Record<string, unknown>;
+              } catch { body = {}; }
+            }
+
+            const msg: WorkflowMessage = {
+              payload: body,
+              metadata: {
+                method: req.method,
+                path: url.pathname,
+                query: Object.fromEntries(url.searchParams),
+                headers: Object.fromEntries(req.headers)
+              }
+            };
+
+            handler(msg);
+            return new Response(JSON.stringify({ status: 'ok' }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
           }
 
-          const msg: WorkflowMessage = {
-            payload: body,
-            metadata: {
-              method: req.method,
-              path: url.pathname,
-              query: Object.fromEntries(url.searchParams),
-              headers: Object.fromEntries(req.headers)
-            }
-          };
-
-          handler(msg);
-          return new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
+          return new Response('Not Found', { status: 404 });
         }
+      });
 
-        return new Response('Not Found', { status: 404 });
+      console.log(`🌐 HTTP Input server running on port ${this.port}`);
+    } catch (err) {
+      this.server = null;
+      const error = err as any;
+      if (error?.message?.includes('EADDRINUSE') || error?.code === 'EADDRINUSE') {
+        throw new Error(`EADDRINUSE: Port ${this.port} is already in use`);
       }
-    });
-
-    console.log(`🌐 HTTP Input server running on port ${this.port}`);
+      throw err;
+    }
   }
 
   async stop(): Promise<void> {
@@ -304,7 +313,7 @@ export function registerRuntimeNodes(
       }
       
       const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
-      client.publish(topic, payload, (err) => {
+      client.publish(topic, payload, (err: Error | null) => {
         if (err) {
           ctx.error(`Failed to publish: ${err.message}`);
         } else {
