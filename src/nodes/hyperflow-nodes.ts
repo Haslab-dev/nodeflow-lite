@@ -234,21 +234,62 @@ export function registerHyperflowNodes(engine: {
       let aiClient: { chat: (prompt: string) => Promise<string> } | undefined;
       
       if (aiConfig?.apiKey) {
-        const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
         const { generateText } = await import('ai');
+        const providerType = aiConfig.provider || 'openai-compatible';
         
-        const provider = createOpenAICompatible({
-          name: aiConfig.name || 'hyperflow-ai',
-          apiKey: aiConfig.apiKey,
-          baseURL: aiConfig.baseUrl,
-        });
+        ctx.log(`🤖 AI Provider: ${providerType}, Model: ${aiConfig.model || 'default'}`);
         
         aiClient = {
           async chat(prompt: string) {
-            const result = await generateText({
-              model: provider(aiConfig.model || 'gpt-3.5-turbo'),
-              prompt,
-            });
+            let result: { text: string };
+            
+            switch (providerType) {
+              case 'deepseek': {
+                const { createDeepSeek } = await import('@ai-sdk/deepseek');
+                const deepseek = createDeepSeek({ apiKey: aiConfig.apiKey });
+                result = await generateText({
+                  model: deepseek(aiConfig.model || 'deepseek-chat'),
+                  prompt,
+                });
+                break;
+              }
+              case 'openrouter': {
+                const { createOpenRouter } = await import('@openrouter/ai-sdk-provider');
+                const openrouter = createOpenRouter({ apiKey: aiConfig.apiKey });
+                result = await generateText({
+                  model: openrouter.chat(aiConfig.model || 'openai/gpt-3.5-turbo'),
+                  prompt,
+                });
+                break;
+              }
+              case 'zhipu': {
+                const { createZhipu } = await import('zhipu-ai-provider');
+                const zhipu = createZhipu({ 
+                  apiKey: aiConfig.apiKey,
+                  baseURL: aiConfig.baseUrl 
+                });
+                result = await generateText({
+                  model: zhipu(aiConfig.model || 'glm-4') as any,
+                  prompt,
+                });
+                break;
+              }
+              case 'openai-compatible':
+              default: {
+                const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
+                const provider = createOpenAICompatible({
+                  name: aiConfig.name || 'hyperflow-ai',
+                  apiKey: aiConfig.apiKey,
+                  baseURL: aiConfig.baseUrl,
+                });
+                result = await generateText({
+                  model: provider(aiConfig.model || 'gpt-3.5-turbo'),
+                  prompt,
+                });
+                break;
+              }
+            }
+            
             return result.text;
           }
         };

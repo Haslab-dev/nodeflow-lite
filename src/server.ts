@@ -12,7 +12,7 @@ const PROTECTED_PORTS = [3000];
 // Get current process ID to avoid killing ourselves
 const CURRENT_PID = process.pid;
 
-// Utility to kill process on a specific port (excluding our own process)
+// Utility to kill process on a specific port (NEVER kills our own process)
 async function killProcessOnPort(port: number): Promise<boolean> {
   // Never kill protected ports
   if (PROTECTED_PORTS.includes(port)) {
@@ -21,9 +21,8 @@ async function killProcessOnPort(port: number): Promise<boolean> {
   }
   
   try {
-    // Find PID using lsof with more specific filtering (macOS/Linux)
-    // -i TCP:port -s TCP:LISTEN ensures we only get the listening process
-    const findProc = Bun.spawn(['lsof', '-ti', `TCP:${port}`, '-sTCP:LISTEN'], {
+    // Find PID using lsof (macOS/Linux)
+    const findProc = Bun.spawn(['lsof', '-ti', `:${port}`], {
       stdout: 'pipe',
       stderr: 'pipe'
     });
@@ -31,36 +30,37 @@ async function killProcessOnPort(port: number): Promise<boolean> {
     const pids = output.trim().split('\n').filter(p => p && p.trim());
     
     if (pids.length === 0) {
-      // Fallback: try without TCP filter
-      const findProc2 = Bun.spawn(['lsof', '-ti', `:${port}`], {
-        stdout: 'pipe',
-        stderr: 'pipe'
-      });
-      const output2 = await new Response(findProc2.stdout).text();
-      const pids2 = output2.trim().split('\n').filter(p => p && p.trim());
-      if (pids2.length === 0) return false;
-      pids.push(...pids2);
-    }
-    
-    // Filter out our own process and deduplicate
-    const uniquePids = [...new Set(pids)].filter(pid => {
-      const pidNum = parseInt(pid, 10);
-      return !isNaN(pidNum) && pidNum !== CURRENT_PID;
-    });
-    
-    if (uniquePids.length === 0) {
-      console.warn(`⚠️ No external process found on port ${port} (only our own process)`);
+      console.log(`ℹ️ No process found on port ${port}`);
       return false;
     }
     
+    // ALWAYS filter out our own process - never kill ourselves!
+    const externalPids = [...new Set(pids)].filter(pid => {
+      const pidNum = parseInt(pid, 10);
+      if (isNaN(pidNum)) return false;
+      if (pidNum === CURRENT_PID) {
+        console.log(`ℹ️ Skipping our own process (PID ${pidNum}) on port ${port}`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (externalPids.length === 0) {
+      // Port is held by our own process - this means a previous service instance
+      // is still bound. We can't kill it, so we'll just wait and hope it releases.
+      console.log(`ℹ️ Port ${port} is held by our own process - waiting for release...`);
+      await new Promise(r => setTimeout(r, 500));
+      return false; // Return false - no external process was killed
+    }
+    
     // Kill each external PID
-    for (const pid of uniquePids) {
+    for (const pid of externalPids) {
       console.log(`⚠️ Killing external process ${pid} on port ${port}`);
       Bun.spawn(['kill', '-9', pid]);
     }
     
     // Wait for port to be released
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1000));
     return true;
   } catch (err) {
     console.error(`Failed to kill process on port ${port}:`, err);
@@ -73,7 +73,7 @@ async function startServiceWithRetry<T extends { start(): Promise<void>; isRunni
   service: T,
   port: number,
   serviceName: string,
-  maxRetries: number = 2
+  maxRetries: number = 3
 ): Promise<boolean> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -85,12 +85,24 @@ async function startServiceWithRetry<T extends { start(): Promise<void>; isRunni
                           err?.message?.includes('address already in use');
       
       if (isPortInUse && attempt < maxRetries) {
-        console.warn(`⚠️ ${serviceName} port ${port} in use, killing existing process...`);
-        await killProcessOnPort(port);
+        console.warn(`⚠️ ${serviceName} port ${port} in use (attempt ${attempt + 1}/${maxRetries + 1})`);
+        
+        // Try to kill external processes on this port
+        const killed = await killProcessOnPort(port);
+        
+        if (!killed) {
+          // No external process found - port might be in TIME_WAIT or held by zombie
+          console.log(`ℹ️ No external process to kill, waiting for port to be released...`);
+        }
+        
+        // Wait before retry (longer each time)
+        const waitTime = 1000 * (attempt + 1);
+        console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+        await new Promise(r => setTimeout(r, waitTime));
         continue;
       }
       
-      console.error(`❌ Failed to start ${serviceName} on port ${port}:`, err);
+      console.error(`❌ Failed to start ${serviceName} on port ${port} after ${attempt + 1} attempts:`, err.message || err);
       return false;
     }
   }

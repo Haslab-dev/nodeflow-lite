@@ -55,6 +55,7 @@ export interface ConfigField {
   language?: 'javascript' | 'json' | 'markdown' | 'text'; // For code type
   options?: string[];
   default?: any;
+  showWhen?: { field: string; value: any }; // Conditionally show field
 }
 
 // Runtime service types

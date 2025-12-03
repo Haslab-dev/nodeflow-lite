@@ -130,7 +130,28 @@ export function registerBuiltInNodes(engine: { registerNodeType: (type: string, 
   // DEBUG/LOG NODE
   engine.registerNodeType('debug', async (msg: WorkflowMessage, ctx: NodeExecutionContext) => {
     const output = ctx.node.config.output || 'payload';
-    const data = output === 'payload' ? msg.payload : msg;
+    const customPath = ctx.node.config.customPath || 'payload';
+    
+    let data: any;
+    
+    if (output === 'full') {
+      // Show entire message object
+      data = msg;
+    } else if (output === 'custom' && customPath) {
+      // Show custom path (e.g., "payload.result", "metadata.timestamp")
+      const keys = customPath.trim().split('.');
+      data = msg as any;
+      for (const key of keys) {
+        if (data === undefined || data === null) break;
+        data = data[key];
+      }
+      if (data === undefined) {
+        data = { error: `Path "${customPath}" not found in message` };
+      }
+    } else {
+      // Default: show only payload
+      data = msg.payload;
+    }
     
     ctx.log(`📋 ${JSON.stringify(data, null, 2)}`);
   });

@@ -78,7 +78,8 @@ export const nodeDefinitions: NodeTypeDefinition[] = [
     icon: '🔍',
     description: 'Log messages for debugging',
     configFields: [
-      { name: 'output', label: 'Output', type: 'select', options: ['payload', 'full'], default: 'payload' }
+      { name: 'output', label: 'Output', type: 'select', options: ['payload', 'full', 'custom'], default: 'payload' },
+      { name: 'customPath', label: 'Custom Path (e.g. payload.data.items)', type: 'string', default: 'payload.result', showWhen: { field: 'output', value: 'custom' } }
     ]
   },
   {

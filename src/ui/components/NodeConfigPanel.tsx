@@ -180,7 +180,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
               <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
               Configuration
             </div>
-            {fields.map(field => (
+            {fields.map(field => {
+              // Check showWhen condition
+              if (field.showWhen) {
+                const conditionValue = node.config[field.showWhen.field] ?? fields.find(f => f.name === field.showWhen!.field)?.default;
+                if (conditionValue !== field.showWhen.value) {
+                  return null; // Don't render this field
+                }
+              }
+              
+              return (
               <div key={field.name} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                   {field.label}
@@ -514,7 +523,8 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
               </div>
             )}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
 

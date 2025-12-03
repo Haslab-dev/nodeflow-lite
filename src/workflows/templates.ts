@@ -8,7 +8,7 @@ export interface Project {
   updatedAt: number;
 }
 
-// Hyperflow Demo Template
+// Hyperflow Demo Template - Vertical Layout
 const hyperflowDemoTemplate: WorkflowDefinition = {
   id: 'template-hyperflow-demo',
   name: '🌊 Hyperflow Demo',
@@ -26,7 +26,7 @@ const hyperflowDemoTemplate: WorkflowDefinition = {
         })
       },
       wires: [['hyperflow-1']],
-      position: { x: 100, y: 200 }
+      position: { x: 200, y: 50 }
     },
     {
       id: 'hyperflow-1',
@@ -78,7 +78,7 @@ hyper
   });`
       },
       wires: [['debug-1']],
-      position: { x: 350, y: 200 }
+      position: { x: 200, y: 150 }
     },
     {
       id: 'debug-1',
@@ -88,12 +88,12 @@ hyper
         output: 'full'
       },
       wires: [[]],
-      position: { x: 600, y: 200 }
+      position: { x: 200, y: 250 }
     }
   ]
 };
 
-// Hyperflow AI + Tools Demo Template
+// Hyperflow AI + Tools Demo Template - Vertical Layout
 const hyperflowAiToolsTemplate: WorkflowDefinition = {
   id: 'template-hyperflow-ai-tools',
   name: '🤖 Hyperflow AI + Tools',
@@ -105,12 +105,12 @@ const hyperflowAiToolsTemplate: WorkflowDefinition = {
       name: 'Inject Query',
       config: {
         payload: JSON.stringify({
-          query: 'What is the weather like?',
+          query: 'What is the weather like in Tokyo? Give me a brief, friendly response.',
           location: 'Tokyo'
         })
       },
       wires: [['hyperflow-ai']],
-      position: { x: 100, y: 200 }
+      position: { x: 200, y: 50 }
     },
     {
       id: 'hyperflow-ai',
@@ -118,36 +118,40 @@ const hyperflowAiToolsTemplate: WorkflowDefinition = {
       name: 'AI + Tools Pipeline',
       config: {
         code: `// Hyperflow with AI and Tools Demo
+// This demo uses REAL AI to generate responses!
 hyper
   .state('query', input.query)
   .state('location', input.location)
   
-  // Register tools
+  // Register tools for data fetching
   .tool('getWeather', async (location) => {
-    // Simulated weather API
-    const temps = { Tokyo: 22, London: 15, NYC: 18, Paris: 17 };
+    // Simulated weather API (in real app, call actual API)
+    const temps = { Tokyo: 22, London: 15, NYC: 18, Paris: 17, Beijing: 19 };
     return {
       location,
       temperature: temps[location] || 20,
       condition: 'Sunny',
-      humidity: 65
+      humidity: 65,
+      wind: '10 km/h'
     };
   })
   
-  .tool('formatResponse', (data) => {
-    return \`Weather in \${data.location}: \${data.temperature}°C, \${data.condition}\`;
-  })
-  
-  // Step 1: Call weather tool
+  // Step 1: Fetch weather data using tool
   .step('fetchWeather', async (ctx, { callTool }) => {
     const weather = await callTool('getWeather', ctx.location.value);
     ctx.weather = new Signal(weather);
   })
   
-  // Step 2: Format the response
-  .step('format', async (ctx, { callTool }) => {
-    const formatted = await callTool('formatResponse', ctx.weather.value);
-    ctx.formatted = new Signal(formatted);
+  // Step 2: Use AI to generate a natural language response
+  .ai('aiResponse', (ctx) => {
+    const w = ctx.weather.value;
+    return \`You are a friendly weather assistant. Based on this weather data for \${w.location}:
+- Temperature: \${w.temperature}°C
+- Condition: \${w.condition}
+- Humidity: \${w.humidity}%
+- Wind: \${w.wind}
+
+Please provide a brief, friendly weather summary in 2-3 sentences. Include a suggestion for what to wear or do.\`;
   })
   
   // DAG: Parallel enrichment
@@ -158,25 +162,34 @@ hyper
     
     g.node('metadata', async (ctx) => {
       ctx.metadata = new Signal({
-        source: 'hyperflow',
-        version: '1.0'
+        source: 'hyperflow-ai',
+        version: '1.0',
+        aiEnabled: true
       });
     });
     
     g.node('result', ['timestamp', 'metadata'], async (ctx) => {
       ctx.result = new Signal({
         query: ctx.query.value,
-        response: ctx.formatted.value,
+        location: ctx.location.value,
         weather: ctx.weather.value,
+        aiResponse: ctx.aiResponse.value,
         timestamp: ctx.timestamp.value,
         metadata: ctx.metadata.value
       });
     });
   });`,
-        aiConfig: null
+        // Configure AI - set your API key and provider here
+        aiConfig: {
+          provider: 'openai-compatible',
+          name: 'hyperflow-ai',
+          apiKey: '', // User needs to set their API key
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-3.5-turbo'
+        }
       },
       wires: [['debug-ai']],
-      position: { x: 350, y: 200 }
+      position: { x: 200, y: 150 }
     },
     {
       id: 'debug-ai',
@@ -184,12 +197,12 @@ hyper
       name: 'Output',
       config: { output: 'full' },
       wires: [[]],
-      position: { x: 600, y: 200 }
+      position: { x: 200, y: 250 }
     }
   ]
 };
 
-// Hyperflow DAG Demo Template
+// Hyperflow DAG Demo Template - Vertical Layout
 const hyperflowDagTemplate: WorkflowDefinition = {
   id: 'template-hyperflow-dag',
   name: '🔀 Hyperflow DAG Demo',
@@ -206,7 +219,7 @@ const hyperflowDagTemplate: WorkflowDefinition = {
         })
       },
       wires: [['dag-1']],
-      position: { x: 100, y: 200 }
+      position: { x: 200, y: 50 }
     },
     {
       id: 'dag-1',
@@ -244,7 +257,7 @@ const hyperflowDagTemplate: WorkflowDefinition = {
         ])
       },
       wires: [['debug-dag']],
-      position: { x: 350, y: 200 }
+      position: { x: 200, y: 150 }
     },
     {
       id: 'debug-dag',
@@ -254,7 +267,7 @@ const hyperflowDagTemplate: WorkflowDefinition = {
         output: 'payload'
       },
       wires: [[]],
-      position: { x: 600, y: 200 }
+      position: { x: 200, y: 250 }
     }
   ]
 };
@@ -430,38 +443,38 @@ export const templateWorkflows: WorkflowDefinition[] = [
     name: '📊 UI Dashboard Demo',
     type: 'flow',
     nodes: [
-      // === MQTT PUBLISHERS (Left side) ===
-      // Temperature publisher
+      // === MQTT PUBLISHERS (Left column - vertical flows) ===
+      // Temperature publisher flow
       { id: '1', type: 'inject', name: 'Send Temp', config: { payload: {} }, wires: [['2']], position: { x: 50, y: 50 } },
       { id: '2', type: 'function', name: 'Gen Temp', config: { code: 'msg.payload = Math.round(Math.random() * 40 + 10);\nreturn msg;' }, wires: [['3']], position: { x: 50, y: 130 } },
       { id: '3', type: 'mqtt-out', name: 'Pub Temp', config: { topic: 'sensors/temperature' }, wires: [[]], position: { x: 50, y: 210 } },
       
-      // Humidity publisher
-      { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 290 } },
-      { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 370 } },
-      { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 450 } },
+      // Humidity publisher flow
+      { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 310 } },
+      { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 390 } },
+      { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 470 } },
       
-      // Status publisher
-      { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 530 } },
-      { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 610 } },
-      { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 690 } },
+      // Status publisher flow
+      { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 570 } },
+      { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 650 } },
+      { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 730 } },
       
-      // Message publisher
-      { id: '10', type: 'inject', name: 'Send Message', config: { payload: {} }, wires: [['11']], position: { x: 50, y: 770 } },
-      { id: '11', type: 'function', name: 'Gen Message', config: { code: 'msg.payload = "Sensor reading at " + new Date().toLocaleTimeString();\nreturn msg;' }, wires: [['12']], position: { x: 50, y: 850 } },
-      { id: '12', type: 'mqtt-out', name: 'Pub Message', config: { topic: 'sensors/message' }, wires: [[]], position: { x: 50, y: 930 } },
+      // === MQTT SUBSCRIBERS -> UI (Right column - vertical flows) ===
+      // Temperature subscriber -> gauge
+      { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 280, y: 50 } },
+      { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 280, y: 130 } },
       
-      // === MQTT SUBSCRIBERS (Middle) ===
-      { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 250, y: 130 } },
-      { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 250, y: 370 } },
-      { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 250, y: 610 } },
-      { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 250, y: 850 } },
+      // Humidity subscriber -> gauge
+      { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 280, y: 230 } },
+      { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 280, y: 310 } },
       
-      // === UI DASHBOARD (Right side) ===
-      { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 450, y: 130 } },
-      { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 450, y: 370 } },
-      { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
-      { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
+      // Status subscriber -> switch
+      { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 280, y: 410 } },
+      { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 280, y: 490 } },
+      
+      // Message subscriber -> text
+      { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 280, y: 590 } },
+      { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 280, y: 670 } }
     ]
   },
   // Hyperflow templates
@@ -569,41 +582,41 @@ export const defaultProject: Project = {
       name: '📊 UI Dashboard Demo',
       type: 'flow',
       nodes: [
-        // === MQTT PUBLISHERS (Left side) ===
-        // Temperature publisher
+        // === MQTT PUBLISHERS (Left column - vertical flows) ===
+        // Temperature publisher flow
         { id: '1', type: 'inject', name: 'Send Temp', config: { payload: {} }, wires: [['2']], position: { x: 50, y: 50 } },
         { id: '2', type: 'function', name: 'Gen Temp', config: { code: 'msg.payload = Math.round(Math.random() * 40 + 10);\nreturn msg;' }, wires: [['3']], position: { x: 50, y: 130 } },
         { id: '3', type: 'mqtt-out', name: 'Pub Temp', config: { topic: 'sensors/temperature' }, wires: [[]], position: { x: 50, y: 210 } },
         
-        // Humidity publisher
-        { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 290 } },
-        { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 370 } },
-        { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 450 } },
+        // Humidity publisher flow
+        { id: '4', type: 'inject', name: 'Send Humidity', config: { payload: {} }, wires: [['5']], position: { x: 50, y: 310 } },
+        { id: '5', type: 'function', name: 'Gen Humidity', config: { code: 'msg.payload = Math.round(Math.random() * 100);\nreturn msg;' }, wires: [['6']], position: { x: 50, y: 390 } },
+        { id: '6', type: 'mqtt-out', name: 'Pub Humidity', config: { topic: 'sensors/humidity' }, wires: [[]], position: { x: 50, y: 470 } },
         
-        // Status publisher
-        { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 530 } },
-        { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 610 } },
-        { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 690 } },
+        // Status publisher flow
+        { id: '7', type: 'inject', name: 'Send Status', config: { payload: {} }, wires: [['8']], position: { x: 50, y: 570 } },
+        { id: '8', type: 'function', name: 'Gen Status', config: { code: 'msg.payload = Math.random() > 0.5;\nreturn msg;' }, wires: [['9']], position: { x: 50, y: 650 } },
+        { id: '9', type: 'mqtt-out', name: 'Pub Status', config: { topic: 'sensors/status' }, wires: [[]], position: { x: 50, y: 730 } },
         
-        // Message publisher
-        { id: '10', type: 'inject', name: 'Send Message', config: { payload: {} }, wires: [['11']], position: { x: 50, y: 770 } },
-        { id: '11', type: 'function', name: 'Gen Message', config: { code: 'msg.payload = "Sensor reading at " + new Date().toLocaleTimeString();\nreturn msg;' }, wires: [['12']], position: { x: 50, y: 850 } },
-        { id: '12', type: 'mqtt-out', name: 'Pub Message', config: { topic: 'sensors/message' }, wires: [[]], position: { x: 50, y: 930 } },
+        // === MQTT SUBSCRIBERS -> UI (Right column - vertical flows) ===
+        // Temperature subscriber -> gauge
+        { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 280, y: 50 } },
+        { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 280, y: 130 } },
         
-        // === MQTT SUBSCRIBERS (Middle) ===
-        { id: '13', type: 'mqtt-in', name: 'Sub Temp', config: { topic: 'sensors/temperature' }, wires: [['17']], position: { x: 250, y: 130 } },
-        { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 250, y: 370 } },
-        { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 250, y: 610 } },
-        { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 250, y: 850 } },
+        // Humidity subscriber -> gauge
+        { id: '14', type: 'mqtt-in', name: 'Sub Humidity', config: { topic: 'sensors/humidity' }, wires: [['18']], position: { x: 280, y: 230 } },
+        { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 280, y: 310 } },
         
-        // === UI DASHBOARD (Right side) ===
-        { id: '17', type: 'ui-gauge', name: 'Temperature', config: { label: 'Temperature', min: 0, max: 50, unit: '°C' }, wires: [[]], position: { x: 450, y: 130 } },
-        { id: '18', type: 'ui-gauge', name: 'Humidity', config: { label: 'Humidity', min: 0, max: 100, unit: '%' }, wires: [[]], position: { x: 450, y: 370 } },
-        { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 450, y: 610 } },
-        { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 450, y: 850 } }
+        // Status subscriber -> switch
+        { id: '15', type: 'mqtt-in', name: 'Sub Status', config: { topic: 'sensors/status' }, wires: [['19']], position: { x: 280, y: 410 } },
+        { id: '19', type: 'ui-switch', name: 'System Status', config: { label: 'System Active' }, wires: [[]], position: { x: 280, y: 490 } },
+        
+        // Message subscriber -> text
+        { id: '16', type: 'mqtt-in', name: 'Sub Message', config: { topic: 'sensors/message' }, wires: [['20']], position: { x: 280, y: 590 } },
+        { id: '20', type: 'ui-text', name: 'Last Update', config: { label: 'Last Update', format: '{{payload}}' }, wires: [[]], position: { x: 280, y: 670 } }
       ]
     },
-    // Hyperflow AI + Tools Demo
+    // Hyperflow AI + Tools Demo - Vertical Layout
     {
       id: 'demo-hyperflow-ai',
       name: '🤖 Hyperflow AI + Tools',
@@ -615,66 +628,81 @@ export const defaultProject: Project = {
           name: 'Inject Query',
           config: {
             payload: JSON.stringify({
-              query: 'Summarize this data',
-              items: ['apple', 'banana', 'cherry'],
-              count: 3
+              query: 'What is the weather like in Tokyo?',
+              location: 'Tokyo'
             })
           },
           wires: [['hyperflow-ai-demo']],
-          position: { x: 100, y: 200 }
+          position: { x: 200, y: 50 }
         },
         {
           id: 'hyperflow-ai-demo',
           type: 'hyperflow',
           name: 'AI + Tools Pipeline',
           config: {
-            code: `// Hyperflow with Tools Demo
+            code: `// Hyperflow with AI and Tools Demo
+// This demo uses REAL AI to generate responses!
 hyper
   .state('query', input.query)
-  .state('items', input.items)
+  .state('location', input.location)
   
-  // Tool: Transform items
-  .tool('transform', (items) => items.map(i => i.toUpperCase()))
-  
-  // Tool: Count items
-  .tool('count', (items) => ({ total: items.length, items }))
-  
-  // Tool: Generate summary
-  .tool('summarize', (data) => \`Processed \${data.total} items: \${data.items.join(', ')}\`)
-  
-  // Step 1: Transform
-  .step('transform', async (ctx, { callTool }) => {
-    ctx.transformed = new Signal(await callTool('transform', ctx.items.value));
+  // Tool: Get weather data (simulated API)
+  .tool('getWeather', async (location) => {
+    const temps = { Tokyo: 22, London: 15, NYC: 18, Paris: 17, Beijing: 19 };
+    return {
+      location,
+      temperature: temps[location] || 20,
+      condition: 'Sunny',
+      humidity: 65,
+      wind: '10 km/h'
+    };
   })
   
-  // Step 2: Count
-  .step('count', async (ctx, { callTool }) => {
-    ctx.counted = new Signal(await callTool('count', ctx.transformed.value));
+  // Step 1: Fetch weather using tool
+  .step('fetchWeather', async (ctx, { callTool }) => {
+    const weather = await callTool('getWeather', ctx.location.value);
+    ctx.weather = new Signal(weather);
   })
   
-  // Step 3: Summarize
-  .step('summarize', async (ctx, { callTool }) => {
-    ctx.summary = new Signal(await callTool('summarize', ctx.counted.value));
+  // Step 2: Use AI to generate natural language response
+  .ai('aiResponse', (ctx) => {
+    const w = ctx.weather.value;
+    return \`You are a friendly weather assistant. Based on this weather data for \${w.location}:
+- Temperature: \${w.temperature}°C
+- Condition: \${w.condition}
+- Humidity: \${w.humidity}%
+- Wind: \${w.wind}
+
+Please provide a brief, friendly weather summary in 2-3 sentences.\`;
   })
   
   // DAG: Final assembly
   .dag('assemble', (g) => {
     g.node('meta', async (ctx) => {
-      ctx.meta = new Signal({ ts: Date.now(), version: '1.0' });
+      ctx.meta = new Signal({ ts: Date.now(), version: '1.0', aiEnabled: true });
     });
     
     g.node('result', ['meta'], async (ctx) => {
       ctx.result = new Signal({
         query: ctx.query.value,
-        summary: ctx.summary.value,
-        data: ctx.counted.value,
+        location: ctx.location.value,
+        weather: ctx.weather.value,
+        aiResponse: ctx.aiResponse.value,
         meta: ctx.meta.value
       });
     });
-  });`
+  });`,
+            // Configure your AI provider here
+            aiConfig: {
+              provider: 'openai-compatible',
+              name: 'hyperflow-ai',
+              apiKey: '', // SET YOUR API KEY HERE
+              baseUrl: 'https://api.openai.com/v1',
+              model: 'gpt-3.5-turbo'
+            }
           },
           wires: [['debug-ai-demo']],
-          position: { x: 350, y: 200 }
+          position: { x: 200, y: 150 }
         },
         {
           id: 'debug-ai-demo',
@@ -682,11 +710,11 @@ hyper
           name: 'Output',
           config: { output: 'full' },
           wires: [[]],
-          position: { x: 600, y: 200 }
+          position: { x: 200, y: 250 }
         }
       ]
     },
-    // Hyperflow Demo: Inject -> Hyperflow -> Debug
+    // Hyperflow Demo: Inject -> Hyperflow -> Debug - Vertical Layout
     {
       id: 'demo-hyperflow',
       name: '🌊 Hyperflow Demo',
@@ -704,7 +732,7 @@ hyper
             })
           },
           wires: [['hyperflow-hf']],
-          position: { x: 100, y: 200 }
+          position: { x: 200, y: 50 }
         },
         {
           id: 'hyperflow-hf',
@@ -756,7 +784,7 @@ hyper
   });`
           },
           wires: [['debug-hf']],
-          position: { x: 350, y: 200 }
+          position: { x: 200, y: 150 }
         },
         {
           id: 'debug-hf',
@@ -766,7 +794,7 @@ hyper
             output: 'full'
           },
           wires: [[]],
-          position: { x: 600, y: 200 }
+          position: { x: 200, y: 250 }
         }
       ]
     }
