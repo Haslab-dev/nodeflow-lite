@@ -480,7 +480,154 @@ export const templateWorkflows: WorkflowDefinition[] = [
   // Hyperflow templates
   hyperflowDemoTemplate,
   hyperflowAiToolsTemplate,
-  hyperflowDagTemplate
+  hyperflowDagTemplate,
+
+  // HTML Output Demo - Real-time dashboard
+  {
+    id: 'template-html-output-demo',
+    name: '🌐 HTML Output Demo',
+    type: 'flow',
+    nodes: [
+      // Interval node sends random data every second
+      {
+        id: 'interval-1',
+        type: 'interval',
+        name: 'Random Data',
+        config: {
+          interval: 1000,
+          payload: `{
+  value: Math.round(Math.random() * 100),
+  status: Math.random() > 0.5 ? 'Online' : 'Processing',
+  temperature: (20 + Math.random() * 15).toFixed(1),
+  timestamp: new Date().toLocaleTimeString()
+}`,
+          maxCount: 0
+        },
+        wires: [['html-out-1']],
+        position: { x: 200, y: 50 }
+      },
+      // HTML Output displays the data
+      {
+        id: 'html-out-1',
+        type: 'html-output',
+        name: 'Dashboard Page',
+        config: {
+          slug: 'demo',
+          title: 'Real-time Dashboard',
+          html: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Real-time Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #eee;
+      padding: 2rem;
+    }
+    h1 { 
+      text-align: center; 
+      margin-bottom: 2rem;
+      font-weight: 300;
+      font-size: 2rem;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(10px);
+    }
+    .card-label {
+      color: #888;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+    .card-value {
+      font-size: 3rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, #00d9ff, #00ff88);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card-unit {
+      font-size: 1.2rem;
+      color: #666;
+      margin-left: 0.25rem;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .status-online { background: rgba(0,255,136,0.2); color: #00ff88; }
+    .status-processing { background: rgba(255,200,0,0.2); color: #ffc800; }
+    .timestamp {
+      text-align: center;
+      margin-top: 2rem;
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 Real-time Dashboard</h1>
+  
+  <div class="dashboard">
+    <div class="card">
+      <div class="card-label">Current Value</div>
+      <div class="card-value pulse" data-bind="value">--</div>
+    </div>
+    
+    <div class="card">
+      <div class="card-label">Temperature</div>
+      <div class="card-value" data-bind="temperature">--</div>
+      <span class="card-unit">°C</span>
+    </div>
+    
+    <div class="card">
+      <div class="card-label">System Status</div>
+      <div class="status-badge status-online" data-bind="status">Waiting...</div>
+    </div>
+    
+    <div class="card">
+      <div class="card-label">Last Update</div>
+      <div style="font-size: 1.5rem; color: #aaa;" data-bind="timestamp">--:--:--</div>
+    </div>
+  </div>
+  
+  <div class="timestamp">
+    Visit <strong>/demo/ui</strong> to see this page • Data updates in real-time via WebSocket
+  </div>
+</body>
+</html>`
+        },
+        wires: [[]],
+        position: { x: 200, y: 150 }
+      }
+    ]
+  }
 ];
 
 export const defaultProject: Project = {
@@ -795,6 +942,511 @@ hyper
           },
           wires: [[]],
           position: { x: 200, y: 250 }
+        }
+      ]
+    },
+    // HTML Output Demo - Real-time dashboard with all features
+    {
+      id: 'demo-html-output',
+      name: '🌐 HTML Output Demo',
+      type: 'flow',
+      nodes: [
+        {
+          id: 'interval-demo',
+          type: 'interval',
+          name: 'Sensor Data',
+          config: {
+            interval: 1000,
+            payload: `{
+  value: Math.round(Math.random() * 100),
+  temperature: 20 + Math.random() * 15,
+  humidity: 40 + Math.random() * 40,
+  pressure: 1000 + Math.random() * 30,
+  status: Math.random() > 0.3 ? 'online' : 'warning',
+  cpu: Math.random() * 100,
+  memory: 30 + Math.random() * 50,
+  requests: Math.floor(Math.random() * 1000),
+  errors: Math.floor(Math.random() * 10),
+  uptime: Date.now(),
+  message: '<strong>System OK</strong> - All services running'
+}`,
+            maxCount: 0
+          },
+          wires: [['html-demo']],
+          position: { x: 200, y: 50 }
+        },
+        {
+          id: 'html-demo',
+          type: 'html-output',
+          name: 'Full Demo Dashboard',
+          config: {
+            slug: 'demo',
+            title: 'Real-time Dashboard',
+            html: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Real-time Dashboard - Full Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      min-height: 100vh;
+      color: #eee;
+      padding: 1.5rem;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .header h1 {
+      font-size: 1.8rem;
+      font-weight: 300;
+      margin-bottom: 0.5rem;
+    }
+    .header .subtitle {
+      color: #666;
+      font-size: 0.85rem;
+    }
+    .connection-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: rgba(0,255,136,0.1);
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #00ff88;
+      margin-top: 0.5rem;
+    }
+    .connection-status.disconnected {
+      background: rgba(255,100,100,0.1);
+      color: #ff6464;
+    }
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-2px);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .card-label {
+      color: #888;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 8px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    .badge-success { background: rgba(0,255,136,0.15); color: #00ff88; }
+    .badge-warning { background: rgba(255,200,0,0.15); color: #ffc800; }
+    .badge-danger { background: rgba(255,100,100,0.15); color: #ff6464; }
+    
+    .card-value {
+      font-size: 2.5rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, #00d9ff, #00ff88);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    .card-unit {
+      font-size: 1rem;
+      color: #666;
+      margin-left: 0.25rem;
+      font-weight: 400;
+    }
+    
+    /* Progress bar */
+    .progress-container {
+      margin-top: 1rem;
+    }
+    .progress-bar {
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00d9ff, #00ff88);
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: #666;
+    }
+    
+    /* Gauge */
+    .gauge-container {
+      position: relative;
+      width: 120px;
+      height: 60px;
+      margin: 0 auto;
+    }
+    .gauge-bg {
+      position: absolute;
+      width: 120px;
+      height: 60px;
+      border-radius: 60px 60px 0 0;
+      background: rgba(255,255,255,0.1);
+      overflow: hidden;
+    }
+    .gauge-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 120px;
+      height: 60px;
+      border-radius: 60px 60px 0 0;
+      background: linear-gradient(90deg, #00ff88, #ffc800, #ff6464);
+      transform-origin: bottom center;
+      transition: transform 0.5s ease;
+    }
+    .gauge-cover {
+      position: absolute;
+      bottom: 0;
+      left: 10px;
+      width: 100px;
+      height: 50px;
+      border-radius: 50px 50px 0 0;
+      background: #1a1a2e;
+    }
+    .gauge-value {
+      position: absolute;
+      bottom: 5px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    .stat-item {
+      text-align: center;
+      padding: 0.75rem;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #00d9ff;
+    }
+    .stat-label {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+    
+    /* Message card */
+    .message-content {
+      padding: 1rem;
+      background: rgba(0,217,255,0.05);
+      border-left: 3px solid #00d9ff;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    
+    /* History chart placeholder */
+    .chart-container {
+      height: 80px;
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      padding-top: 1rem;
+    }
+    .chart-bar {
+      flex: 1;
+      background: linear-gradient(to top, #00d9ff, #00ff88);
+      border-radius: 2px 2px 0 0;
+      transition: height 0.3s ease;
+      min-height: 4px;
+    }
+    
+    .footer {
+      text-align: center;
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      color: #444;
+      font-size: 0.8rem;
+    }
+    .footer a {
+      color: #00d9ff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📊 Real-time Dashboard</h1>
+    <div class="subtitle">Full Demo - All Binding Features</div>
+    <div class="connection-status" id="conn-status">
+      <div class="connection-dot"></div>
+      <span>Connected</span>
+    </div>
+  </div>
+  
+  <div class="dashboard">
+    <!-- Card 1: Simple data-bind -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">📈 Current Value</span>
+        <span class="card-badge badge-success">LIVE</span>
+      </div>
+      <div class="card-value" data-bind="value">--</div>
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="value-progress"></div>
+        </div>
+        <div class="progress-labels">
+          <span>0</span>
+          <span>100</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Card 2: Formatted via JS -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">🌡️ Temperature</span>
+        <span class="card-badge" id="temp-badge">--</span>
+      </div>
+      <div class="card-value"><span id="temp-value">--</span><span class="card-unit">°C</span></div>
+      <div class="gauge-container">
+        <div class="gauge-bg"></div>
+        <div class="gauge-fill" id="temp-gauge"></div>
+        <div class="gauge-cover"></div>
+        <div class="gauge-value" id="temp-gauge-value">--°</div>
+      </div>
+    </div>
+    
+    <!-- Card 3: Multiple values with JS formatting -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">💧 Environment</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="humidity-value">--</div>
+          <div class="stat-label">Humidity %</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="pressure-value">--</div>
+          <div class="stat-label">Pressure hPa</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Card 4: Status with conditional styling -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">🖥️ System Status</span>
+        <span class="card-badge" id="status-badge">--</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="cpu-value">--</div>
+          <div class="stat-label">CPU %</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="memory-value">--</div>
+          <div class="stat-label">Memory %</div>
+        </div>
+      </div>
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="cpu-progress"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Card 5: Requests with history chart -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">📊 Traffic</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="requests-value">--</div>
+          <div class="stat-label">Requests</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="errors-value">--</div>
+          <div class="stat-label">Errors</div>
+        </div>
+      </div>
+      <div class="chart-container" id="history-chart"></div>
+    </div>
+    
+    <!-- Card 6: HTML content binding -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-label">💬 System Message</span>
+      </div>
+      <div class="message-content" data-bind-html="message">Waiting for data...</div>
+      <div style="margin-top: 1rem; font-size: 0.75rem; color: #666;">
+        Uptime: <span id="uptime-value">--</span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="footer">
+    Visit <a href="/demo/ui">/demo/ui</a> • Real-time via WebSocket • 
+    <span id="update-count">0</span> updates received
+  </div>
+
+  <script>
+    // Track history for chart
+    const history = [];
+    const maxHistory = 20;
+    let updateCount = 0;
+    
+    // Listen for real-time updates
+    window.addEventListener('htmloutput:update', (e) => {
+      const data = e.detail;
+      updateCount++;
+      document.getElementById('update-count').textContent = updateCount;
+      
+      // === FORMATTED VALUES (Custom JS) ===
+      
+      // Temperature with formatting and conditional badge
+      const temp = parseFloat(data.temperature);
+      document.getElementById('temp-value').textContent = temp.toFixed(1);
+      document.getElementById('temp-gauge-value').textContent = temp.toFixed(0) + '°';
+      
+      // Temperature gauge (0-40°C range)
+      const tempPercent = Math.min(100, Math.max(0, (temp / 40) * 100));
+      document.getElementById('temp-gauge').style.transform = 
+        'rotate(' + (tempPercent * 1.8 - 180) + 'deg)';
+      
+      // Temperature badge
+      const tempBadge = document.getElementById('temp-badge');
+      if (temp > 30) {
+        tempBadge.textContent = 'HOT';
+        tempBadge.className = 'card-badge badge-danger';
+      } else if (temp > 25) {
+        tempBadge.textContent = 'WARM';
+        tempBadge.className = 'card-badge badge-warning';
+      } else {
+        tempBadge.textContent = 'NORMAL';
+        tempBadge.className = 'card-badge badge-success';
+      }
+      
+      // Environment values
+      document.getElementById('humidity-value').textContent = 
+        parseFloat(data.humidity).toFixed(0);
+      document.getElementById('pressure-value').textContent = 
+        parseFloat(data.pressure).toFixed(0);
+      
+      // System status
+      const statusBadge = document.getElementById('status-badge');
+      if (data.status === 'online') {
+        statusBadge.textContent = 'ONLINE';
+        statusBadge.className = 'card-badge badge-success';
+      } else {
+        statusBadge.textContent = 'WARNING';
+        statusBadge.className = 'card-badge badge-warning';
+      }
+      
+      // CPU & Memory
+      const cpu = parseFloat(data.cpu);
+      const memory = parseFloat(data.memory);
+      document.getElementById('cpu-value').textContent = cpu.toFixed(0);
+      document.getElementById('memory-value').textContent = memory.toFixed(0);
+      document.getElementById('cpu-progress').style.width = cpu + '%';
+      
+      // Value progress bar
+      document.getElementById('value-progress').style.width = data.value + '%';
+      
+      // Traffic stats
+      document.getElementById('requests-value').textContent = data.requests;
+      document.getElementById('errors-value').textContent = data.errors;
+      
+      // Uptime formatting
+      const uptimeMs = Date.now() - data.uptime;
+      const uptimeSec = Math.floor(uptimeMs / 1000);
+      document.getElementById('uptime-value').textContent = 
+        Math.floor(uptimeSec / 60) + 'm ' + (uptimeSec % 60) + 's';
+      
+      // === HISTORY CHART ===
+      history.push(data.value);
+      if (history.length > maxHistory) history.shift();
+      
+      const chartContainer = document.getElementById('history-chart');
+      chartContainer.innerHTML = history.map(v => 
+        '<div class="chart-bar" style="height: ' + v + '%"></div>'
+      ).join('');
+    });
+    
+    // Connection status indicator
+    const connStatus = document.getElementById('conn-status');
+    window.addEventListener('online', () => {
+      connStatus.classList.remove('disconnected');
+      connStatus.querySelector('span').textContent = 'Connected';
+    });
+    window.addEventListener('offline', () => {
+      connStatus.classList.add('disconnected');
+      connStatus.querySelector('span').textContent = 'Disconnected';
+    });
+  </script>
+</body>
+</html>`
+          },
+          wires: [[]],
+          position: { x: 200, y: 150 }
         }
       ]
     }

@@ -69,6 +69,8 @@ const nodeIcons: Record<string, React.ReactNode> = {
   'ui-number': <IconCode size={16} />,
   'ui-gauge': <IconCode size={16} />,
   'ui-switch': <IconCode size={16} />,
+  'html-output': <IconWorld size={16} />,
+  'interval': <IconClock size={16} />,
 };
 
 const categoryColors: Record<string, string> = {

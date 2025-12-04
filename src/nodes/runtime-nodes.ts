@@ -139,11 +139,16 @@ export class MqttService implements RuntimeService {
   }
 }
 
-// Track active subscriptions to prevent duplicates
+// Track active subscriptions to prevent duplicates and enable cleanup
 const activeHttpRoutes = new Set<string>();
-const activeMqttSubs = new Set<string>();
-const activeWsSubs = new Set<string>();
+const activeMqttSubs = new Map<string, { topic: string; handler: MessageHandler; isLocal: boolean }>();
+const activeWsSubs = new Map<string, { topic: string; handler: MessageHandler }>();
 const externalMqttClients = new Map<string, any>();
+
+// Store service references for cleanup
+let _httpService: HttpInService | null = null;
+let _mqttService: MqttService | null = null;
+let _wsService: any = null;
 
 // Register runtime nodes
 export function registerRuntimeNodes(
@@ -198,14 +203,17 @@ export function registerRuntimeNodes(
       return;
     }
     
-    activeMqttSubs.add(subKey);
+    // Create handler for this subscription
+    const handler: MessageHandler = (incomingMsg) => {
+      ctx.log(`📥 MQTT [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
+      ctx.send(incomingMsg);
+    };
+    
+    activeMqttSubs.set(subKey, { topic, handler, isLocal: broker === 'local' });
     
     if (broker === 'local') {
       // Use local broker
-      mqttService.subscribe(topic, (incomingMsg) => {
-        ctx.log(`📥 MQTT [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
-        ctx.send(incomingMsg);
-      });
+      mqttService.subscribe(topic, handler);
       ctx.log(`✓ Subscribed to ${topic} (local broker)`);
     } else {
       // Connect to external broker
@@ -334,11 +342,13 @@ export function registerRuntimeNodes(
         return;
       }
       
-      activeWsSubs.add(topic);
-      wsService.subscribe(topic, (incomingMsg: WorkflowMessage) => {
+      const handler = (incomingMsg: WorkflowMessage) => {
         ctx.log(`🔌 WebSocket [${topic}]: ${JSON.stringify(incomingMsg.payload)}`);
         ctx.send(incomingMsg);
-      });
+      };
+      
+      activeWsSubs.set(topic, { topic, handler });
+      wsService.subscribe(topic, handler);
       
       ctx.log(`✓ Subscribed to WebSocket ${topic}`);
     });

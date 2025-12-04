@@ -3,8 +3,114 @@ import { WorkflowEngine } from "./WorkflowEngine.ts";
 import { HttpInService, registerRuntimeNodes, clearRuntimeSubscriptions } from "./nodes/runtime-nodes.ts";
 import { MqttBroker } from "./nodes/mqtt-broker.ts";
 import { WebSocketBroker } from "./nodes/websocket-broker.ts";
+import { registerHtmlOutputNodes, getHtmlOutputs, getHtmlOutputBySlug, generateHtmlPage, clearHtmlOutputs } from "./nodes/html-output.ts";
 import { authService } from "./auth/index.ts";
-import type { WorkflowDefinition, NodeConfig } from "./types/index.ts";
+import type { WorkflowDefinition } from "./types/index.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+
+// =========================
+// Persistent Workflow Storage
+// =========================
+const DATA_DIR = join(import.meta.dir, "../data");
+const DEPLOYED_WORKFLOWS_FILE = join(DATA_DIR, "deployed-workflows.json");
+
+// Ensure data directory exists
+if (!existsSync(DATA_DIR)) {
+  mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Load deployed workflows from disk
+function loadDeployedWorkflows(): WorkflowDefinition[] {
+  try {
+    if (existsSync(DEPLOYED_WORKFLOWS_FILE)) {
+      const data = readFileSync(DEPLOYED_WORKFLOWS_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error("Failed to load deployed workflows:", err);
+  }
+  return [];
+}
+
+// Save deployed workflows to disk
+function saveDeployedWorkflows(workflows: WorkflowDefinition[]): void {
+  try {
+    writeFileSync(DEPLOYED_WORKFLOWS_FILE, JSON.stringify(workflows, null, 2));
+  } catch (err) {
+    console.error("Failed to save deployed workflows:", err);
+  }
+}
+
+// Currently deployed workflows (in memory)
+let deployedWorkflows: WorkflowDefinition[] = [];
+
+// =========================
+// Metrics & Monitoring
+// =========================
+interface ExecutionMetrics {
+  totalExecutions: number;
+  successfulExecutions: number;
+  failedExecutions: number;
+  totalExecutionTimeMs: number;
+  executionsByWorkflow: Map<string, number>;
+  executionsByNode: Map<string, number>;
+  lastExecutionTime: number | null;
+  startTime: number;
+}
+
+const metrics: ExecutionMetrics = {
+  totalExecutions: 0,
+  successfulExecutions: 0,
+  failedExecutions: 0,
+  totalExecutionTimeMs: 0,
+  executionsByWorkflow: new Map(),
+  executionsByNode: new Map(),
+  lastExecutionTime: null,
+  startTime: Date.now()
+};
+
+// Track execution
+function trackExecution(workflowId: string, nodeType: string, durationMs: number, success: boolean) {
+  metrics.totalExecutions++;
+  if (success) {
+    metrics.successfulExecutions++;
+  } else {
+    metrics.failedExecutions++;
+  }
+  metrics.totalExecutionTimeMs += durationMs;
+  metrics.lastExecutionTime = Date.now();
+  
+  // Track by workflow
+  const wfCount = metrics.executionsByWorkflow.get(workflowId) || 0;
+  metrics.executionsByWorkflow.set(workflowId, wfCount + 1);
+  
+  // Track by node type
+  const nodeCount = metrics.executionsByNode.get(nodeType) || 0;
+  metrics.executionsByNode.set(nodeType, nodeCount + 1);
+}
+
+// Get system resource usage
+function getResourceUsage() {
+  const memUsage = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+  const uptime = process.uptime();
+  
+  return {
+    memory: {
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024 * 100) / 100, // MB
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024 * 100) / 100, // MB
+      rss: Math.round(memUsage.rss / 1024 / 1024 * 100) / 100, // MB (total memory)
+      external: Math.round(memUsage.external / 1024 / 1024 * 100) / 100 // MB
+    },
+    cpu: {
+      user: Math.round(cpuUsage.user / 1000), // ms
+      system: Math.round(cpuUsage.system / 1000) // ms
+    },
+    uptime: Math.round(uptime), // seconds
+    pid: process.pid
+  };
+}
 
 // Protected ports that should never be killed (our own UI server)
 const PROTECTED_PORTS = [3000];
@@ -133,6 +239,85 @@ const wsServiceAdapter = {
 };
 
 registerRuntimeNodes(engine, httpInService, mqttServiceAdapter as any, wsServiceAdapter as any);
+registerHtmlOutputNodes(engine, wsServiceAdapter);
+
+// Track active intervals for cleanup
+const activeIntervals = new Map<string, NodeJS.Timeout>();
+
+// Register interval node
+engine.registerNodeType('interval', async (_msg, ctx) => {
+  const { interval = 1000, payload = '{ value: Math.random() }', maxCount = 0 } = ctx.node.config;
+  const workflowId = ctx.workflowId || 'default';
+  const intervalKey = `${workflowId}::${ctx.node.id}`; // Use :: as separator for clearer matching
+  
+  // Prevent duplicate intervals
+  if (activeIntervals.has(intervalKey)) {
+    ctx.log(`⏰ Interval already running (key: ${intervalKey})`);
+    return;
+  }
+  
+  let count = 0;
+  const timer = setInterval(() => {
+    try {
+      // Evaluate payload expression
+      const func = new Function(`return ${payload}`);
+      const data = func();
+      
+      count++;
+      ctx.log(`⏰ Interval tick #${count}`);
+      ctx.send({ payload: data, metadata: { tick: count, timestamp: Date.now() } });
+      
+      // Stop if max count reached
+      if (maxCount > 0 && count >= maxCount) {
+        clearInterval(timer);
+        activeIntervals.delete(intervalKey);
+        ctx.log(`⏰ Interval completed (${maxCount} ticks)`);
+      }
+    } catch (err) {
+      ctx.error(`Interval payload error: ${(err as Error).message}`);
+    }
+  }, interval);
+  
+  activeIntervals.set(intervalKey, timer);
+  console.log(`⏰ Interval registered: ${intervalKey}`);
+  ctx.log(`⏰ Interval started: every ${interval}ms${maxCount > 0 ? `, max ${maxCount} ticks` : ''}`);
+});
+
+// Clear intervals on undeploy
+function clearActiveIntervals(workflowId?: string) {
+  console.log(`⏰ clearActiveIntervals called with workflowId: ${workflowId}`);
+  console.log(`⏰ Active intervals: ${Array.from(activeIntervals.keys()).join(', ')}`);
+  
+  if (workflowId) {
+    for (const [key, timer] of activeIntervals.entries()) {
+      // Match keys that start with workflowId::
+      if (key.startsWith(`${workflowId}::`)) {
+        clearInterval(timer);
+        activeIntervals.delete(key);
+        console.log(`⏰ Cleared interval: ${key}`);
+      }
+    }
+  } else {
+    for (const [key, timer] of activeIntervals.entries()) {
+      clearInterval(timer);
+      console.log(`⏰ Cleared interval: ${key}`);
+    }
+    activeIntervals.clear();
+  }
+  console.log(`⏰ Remaining intervals: ${activeIntervals.size}`);
+}
+
+// Get active intervals count
+function getActiveIntervalsCount(workflowId?: string): number {
+  if (workflowId) {
+    let count = 0;
+    for (const key of activeIntervals.keys()) {
+      if (key.startsWith(`${workflowId}::`)) count++;
+    }
+    return count;
+  }
+  return activeIntervals.size;
+}
 
 // Initialize authentication and default admin user
 await authService.initializeDefaultAdmin();
@@ -158,19 +343,26 @@ const addInfoLog = (message: string) => {
 
 // Track node execution with minimum display time
 let nodeExecutionStartTime: number = 0;
+let currentNodeType: string = '';
+let currentWorkflowId: string = '';
 const MIN_INDICATOR_DISPLAY_MS = 800; // Minimum time to show indicator (800ms)
 
 // Track node execution start - set the executing node ID
-engine.on('nodeStart', (nodeId: string, nodeName: string, nodeType: string) => {
+engine.on('nodeStart', (nodeId: string, nodeName: string, nodeType: string, workflowId?: string) => {
   currentExecutingNodeId = nodeId;
+  currentNodeType = nodeType;
+  currentWorkflowId = workflowId || '';
   nodeExecutionStartTime = Date.now();
 });
 
 // Track node execution complete - clear the executing node ID with minimum display time
-engine.on('nodeComplete', (nodeId: string, nodeName: string, nodeType: string) => {
+engine.on('nodeComplete', (nodeId: string, nodeName: string, nodeType: string, workflowId?: string) => {
+  // Track metrics
+  const elapsed = Date.now() - nodeExecutionStartTime;
+  trackExecution(workflowId || currentWorkflowId, nodeType || currentNodeType, elapsed, true);
+  
   // Only clear if this is the currently executing node
   if (currentExecutingNodeId === nodeId) {
-    const elapsed = Date.now() - nodeExecutionStartTime;
     const remainingTime = Math.max(0, MIN_INDICATOR_DISPLAY_MS - elapsed);
     
     // If node completed too fast, keep indicator visible for minimum time
@@ -220,9 +412,13 @@ engine.on('log', (msg: string) => {
   pendingExecution = null; // Clear pending if we get something else
 });
 
-engine.on('error', (msg: string) => {
+engine.on('error', (msg: string, workflowId?: string, nodeType?: string) => {
   addInfoLog(`❌ ${msg}`);
   pendingExecution = null;
+  
+  // Track failed execution
+  const elapsed = Date.now() - nodeExecutionStartTime;
+  trackExecution(workflowId || currentWorkflowId, nodeType || currentNodeType, elapsed, false);
 });
 
 // Listen for UI updates from UI nodes
@@ -230,7 +426,6 @@ engine.on('ui-update', (data: any) => {
   uiWidgets.set(data.nodeId, data);
 });
 
-let deployedWorkflow: WorkflowDefinition | null = null;
 let currentExecutingNodeId: string | null = null;
 
 const apiHandlers = {
@@ -263,21 +458,19 @@ const apiHandlers = {
     };
   },
 
-  // Deploy workflow - registers all listeners (http-in, mqtt-in)
-  async deployWorkflow(workflow: WorkflowDefinition) {
-    // Clear previous subscriptions
-    clearRuntimeSubscriptions();
-    
+  // Deploy workflow - registers all listeners (http-in, mqtt-in) and persists to disk
+  async deployWorkflow(workflow: WorkflowDefinition, persist: boolean = true) {
     // Load and register listeners
     engine.loadWorkflow(workflow);
     
-    // Find and execute listener nodes only (http-in, mqtt-in)
-    const listenerTypes = ['http-in', 'mqtt-in'];
+    // Find and execute listener/input nodes (http-in, mqtt-in, ws-in, interval)
+    const listenerTypes = ['http-in', 'mqtt-in', 'ws-in', 'websocket-in', 'interval'];
     const listenerNodes = workflow.nodes.filter(n => listenerTypes.includes(n.type));
     
     // Auto-start services if needed
     const hasHttpNodes = workflow.nodes.some(n => n.type === 'http-in');
     const hasMqttNodes = workflow.nodes.some(n => ['mqtt-in', 'mqtt-out'].includes(n.type));
+    const hasWsNodes = workflow.nodes.some(n => ['ws-in', 'ws-out', 'websocket-in', 'websocket-out', 'html-output'].includes(n.type));
     
     if (hasHttpNodes && !httpInService.isRunning()) {
       await httpInService.start();
@@ -285,24 +478,83 @@ const apiHandlers = {
     if (hasMqttNodes && !mqttBroker.isRunning()) {
       await mqttBroker.start();
     }
+    if (hasWsNodes && !wsBroker.isRunning()) {
+      await wsBroker.start();
+    }
     
-    const nodeMap = new Map<string, NodeConfig>();
-    workflow.nodes.forEach(n => nodeMap.set(n.id, n));
-    
+    // Execute listener nodes to register handlers
     for (const node of listenerNodes) {
       await engine.executeNodeById(workflow.id, node.id);
     }
     
-    deployedWorkflow = workflow;
+    // Add to deployed workflows (replace if exists)
+    const existingIndex = deployedWorkflows.findIndex(w => w.id === workflow.id);
+    if (existingIndex >= 0) {
+      deployedWorkflows[existingIndex] = workflow;
+    } else {
+      deployedWorkflows.push(workflow);
+    }
+    
+    // Persist to disk for headless operation
+    if (persist) {
+      saveDeployedWorkflows(deployedWorkflows);
+      console.log(`📦 Deployed workflow "${workflow.name}" (${listenerNodes.length} listeners)`);
+    }
+    
     await new Promise(r => setTimeout(r, 50));
-    return { success: true };
+    return { success: true, listenersCount: listenerNodes.length };
   },
 
-  // Undeploy - clear all listeners
-  async undeployWorkflow() {
+  // Undeploy a specific workflow
+  async undeployWorkflow(workflowId?: string) {
+    if (workflowId) {
+      // Undeploy specific workflow
+      console.log(`📦 Undeploying workflow "${workflowId}"...`);
+      deployedWorkflows = deployedWorkflows.filter(w => w.id !== workflowId);
+      clearActiveIntervals(workflowId);
+      clearHtmlOutputs(workflowId);
+    } else {
+      // Undeploy all
+      console.log(`📦 Undeploying all workflows...`);
+      deployedWorkflows = [];
+      clearActiveIntervals();
+      clearHtmlOutputs();
+    }
+    
+    // IMPORTANT: Clear ALL subscriptions first (HTTP routes, MQTT subscriptions, WS handlers)
     clearRuntimeSubscriptions();
-    deployedWorkflow = null;
-    return { success: true };
+    
+    // Re-deploy remaining workflows (this will re-register their listeners)
+    for (const w of deployedWorkflows) {
+      await this.deployWorkflow(w, false);
+    }
+    
+    // Persist changes
+    saveDeployedWorkflows(deployedWorkflows);
+    console.log(`📦 Undeploy complete, ${deployedWorkflows.length} workflow(s) remaining`);
+    
+    return { success: true, remaining: deployedWorkflows.length };
+  },
+
+  // Stop a workflow (clears intervals but keeps it deployed)
+  async stopWorkflow(workflowId: string) {
+    console.log(`⏹️ Stopping workflow "${workflowId}"...`);
+    const intervalCount = getActiveIntervalsCount(workflowId);
+    clearActiveIntervals(workflowId);
+    console.log(`⏹️ Stopped ${intervalCount} interval(s)`);
+    return { success: true, stoppedIntervals: intervalCount };
+  },
+
+  // Get list of deployed workflows
+  getDeployedWorkflows() {
+    return deployedWorkflows.map(w => ({
+      id: w.id,
+      name: w.name,
+      type: w.type,
+      nodeCount: w.nodes.length,
+      listenerCount: w.nodes.filter(n => ['http-in', 'mqtt-in', 'ws-in'].includes(n.type)).length,
+      activeIntervals: getActiveIntervalsCount(w.id)
+    }));
   },
 
   // Trigger a specific inject node
@@ -364,15 +616,62 @@ const apiHandlers = {
   clearDebugLogs() { debugLogs.splice(0, debugLogs.length); return { success: true }; },
 
   getStatus() {
+    const resources = getResourceUsage();
     return {
       http: httpInService.isRunning(),
       mqtt: mqttBroker.isRunning(),
       ws: wsBroker.isRunning(),
       mqttClients: mqttBroker.getClientCount(),
       wsClients: wsBroker.getClientCount(),
-      deployed: deployedWorkflow !== null,
-      executingNodeId: currentExecutingNodeId
+      deployedCount: deployedWorkflows.length,
+      deployedWorkflows: deployedWorkflows.map(w => ({ id: w.id, name: w.name })),
+      executingNodeId: currentExecutingNodeId,
+      // Quick resource summary
+      memory: resources.memory.rss,
+      uptime: resources.uptime
     };
+  },
+
+  getMetrics() {
+    const resources = getResourceUsage();
+    return {
+      resources,
+      executions: {
+        total: metrics.totalExecutions,
+        successful: metrics.successfulExecutions,
+        failed: metrics.failedExecutions,
+        avgExecutionTimeMs: metrics.totalExecutions > 0 
+          ? Math.round(metrics.totalExecutionTimeMs / metrics.totalExecutions) 
+          : 0,
+        lastExecutionTime: metrics.lastExecutionTime,
+        byWorkflow: Object.fromEntries(metrics.executionsByWorkflow),
+        byNodeType: Object.fromEntries(metrics.executionsByNode)
+      },
+      workflows: {
+        deployed: deployedWorkflows.length,
+        totalListeners: deployedWorkflows.reduce((sum, w) => 
+          sum + w.nodes.filter(n => ['http-in', 'mqtt-in', 'ws-in'].includes(n.type)).length, 0
+        ),
+        totalNodes: deployedWorkflows.reduce((sum, w) => sum + w.nodes.length, 0)
+      },
+      connections: {
+        mqttClients: mqttBroker.getClientCount(),
+        wsClients: wsBroker.getClientCount()
+      },
+      serverStartTime: metrics.startTime,
+      uptimeSeconds: resources.uptime
+    };
+  },
+
+  resetMetrics() {
+    metrics.totalExecutions = 0;
+    metrics.successfulExecutions = 0;
+    metrics.failedExecutions = 0;
+    metrics.totalExecutionTimeMs = 0;
+    metrics.executionsByWorkflow.clear();
+    metrics.executionsByNode.clear();
+    metrics.lastExecutionTime = null;
+    return { success: true };
   },
 
   publishMqtt(topic: string, payload: any) {
@@ -453,8 +752,31 @@ Bun.serve({
         const authResult = await checkAuth(req);
         if (authResult.response) return authResult.response;
 
-        const result = await apiHandlers.undeployWorkflow();
+        const body = await req.json().catch(() => ({}));
+        const result = await apiHandlers.undeployWorkflow(body?.workflowId);
         return Response.json(result);
+      }
+    },
+
+    "/api/workflow/stop": {
+      POST: async (req: any) => {
+        const authResult = await checkAuth(req);
+        if (authResult.response) return authResult.response;
+
+        const body = await req.json().catch(() => ({}));
+        if (!body?.workflowId) {
+          return Response.json({ success: false, error: 'workflowId required' }, { status: 400 });
+        }
+        const result = await apiHandlers.stopWorkflow(body.workflowId);
+        return Response.json(result);
+      }
+    },
+    
+    "/api/workflow/deployed": {
+      GET: async () => {
+        // Public endpoint - shows what's deployed
+        const result = apiHandlers.getDeployedWorkflows();
+        return Response.json({ workflows: result });
       }
     },
     
@@ -540,6 +862,21 @@ Bun.serve({
       }
     },
     
+    "/api/metrics": {
+      GET: async () => {
+        // Metrics endpoint - public for monitoring
+        const result = apiHandlers.getMetrics();
+        return Response.json(result);
+      },
+      DELETE: async (req: any) => {
+        const authResult = await checkAuth(req);
+        if (authResult.response) return authResult.response;
+        
+        const result = apiHandlers.resetMetrics();
+        return Response.json(result);
+      }
+    },
+    
     "/api/ui-data": {
       GET: async () => {
         // Return UI dashboard data
@@ -595,16 +932,57 @@ Bun.serve({
         const stats = AIMemoryManager.getStats();
         return Response.json(stats);
       }
+    },
+
+    "/api/html-outputs": {
+      GET: async () => {
+        // Get all registered HTML outputs
+        const outputs = getHtmlOutputs();
+        return Response.json({ 
+          outputs: outputs.map(o => ({ 
+            slug: o.slug, 
+            workflowId: o.workflowId,
+            lastUpdated: o.lastUpdated 
+          })) 
+        });
+      }
+    },
+
+    // Dynamic HTML output pages - /:slug/ui
+    "/:slug/ui": {
+      GET: async (req: any) => {
+        const slug = req.params?.slug;
+        if (!slug) {
+          return new Response('Bad request', { status: 400 });
+        }
+        
+        const output = getHtmlOutputBySlug(slug);
+        
+        if (output) {
+          const html = generateHtmlPage(output.html, output.data, slug, 1884);
+          return new Response(html, {
+            headers: { 'Content-Type': 'text/html; charset=utf-8' }
+          });
+        }
+        
+        return new Response(
+          `<html><body><h1>404 - Page not found</h1><p>No HTML output registered for slug: ${slug}</p><p><a href="/">Go to NodeFlow</a></p></body></html>`,
+          { status: 404, headers: { 'Content-Type': 'text/html' } }
+        );
+      }
     }
   },
+  
+
   
   development: { hmr: true, console: true }
 });
 
 console.log("🚀 NodeFlow server running at http://localhost:3000");
 
-// Auto-start services with port conflict handling
+// Auto-start services and deploy persisted workflows
 (async () => {
+  // Start all services
   const results = await Promise.all([
     startServiceWithRetry(httpInService, 3001, 'HTTP Input'),
     startServiceWithRetry(mqttBroker, 1883, 'MQTT Broker'),
@@ -616,6 +994,23 @@ console.log("🚀 NodeFlow server running at http://localhost:3000");
     console.log("✅ All services started successfully");
   } else {
     console.warn("⚠️ Some services failed to start");
+  }
+  
+  // Auto-deploy persisted workflows (headless mode)
+  const savedWorkflows = loadDeployedWorkflows();
+  if (savedWorkflows.length > 0) {
+    console.log(`\n📦 Auto-deploying ${savedWorkflows.length} persisted workflow(s)...`);
+    for (const workflow of savedWorkflows) {
+      try {
+        await apiHandlers.deployWorkflow(workflow, false); // Don't re-save
+        deployedWorkflows.push(workflow);
+        const listenerCount = workflow.nodes.filter(n => ['http-in', 'mqtt-in', 'ws-in'].includes(n.type)).length;
+        console.log(`   ✓ "${workflow.name}" (${listenerCount} listeners)`);
+      } catch (err) {
+        console.error(`   ✗ Failed to deploy "${workflow.name}":`, err);
+      }
+    }
+    console.log(`📦 Headless mode ready - ${deployedWorkflows.length} workflow(s) running\n`);
   }
 })();
 

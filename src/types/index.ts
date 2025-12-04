@@ -52,10 +52,20 @@ export interface ConfigField {
   name: string;
   label: string;
   type: 'string' | 'number' | 'boolean' | 'code' | 'select' | 'ai-config' | 'mqtt-config';
-  language?: 'javascript' | 'json' | 'markdown' | 'text'; // For code type
+  language?: 'javascript' | 'json' | 'markdown' | 'text' | 'html'; // For code type
   options?: string[];
   default?: any;
   showWhen?: { field: string; value: any }; // Conditionally show field
+}
+
+// HTML Output node data store
+export interface HtmlOutputData {
+  nodeId: string;
+  workflowId: string;
+  slug: string;
+  html: string;
+  data: any;
+  lastUpdated: number;
 }
 
 // Runtime service types

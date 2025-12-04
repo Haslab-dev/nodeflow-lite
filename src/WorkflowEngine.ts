@@ -12,6 +12,7 @@ import { registerHyperflowNodes } from "./nodes/hyperflow-nodes.ts";
 export class WorkflowEngine extends EventEmitter {
   private nodeTypes: Map<string, NodeExecutor> = new Map();
   private workflows: Map<string, WorkflowDefinition> = new Map();
+  private currentWorkflowId: string | null = null;
 
   constructor() {
     super();
@@ -36,6 +37,8 @@ export class WorkflowEngine extends EventEmitter {
     if (!workflow) {
       throw new Error(`Workflow not found: ${workflowId}`);
     }
+
+    this.currentWorkflowId = workflowId;
 
     this.log(`\n========================================`);
     this.log(`Executing workflow: ${workflow.name}`);
@@ -82,6 +85,8 @@ export class WorkflowEngine extends EventEmitter {
       throw new Error(`Workflow not found: ${workflowId}`);
     }
 
+    this.currentWorkflowId = workflowId;
+
     const nodeMap = new Map<string, NodeConfig>();
     workflow.nodes.forEach(node => nodeMap.set(node.id, node));
 
@@ -115,7 +120,7 @@ export class WorkflowEngine extends EventEmitter {
 
     const context: NodeExecutionContext = {
       node,
-      workflowId: this.currentWorkflow?.id,
+      workflowId: this.currentWorkflowId || undefined,
       send: (outMsg, output = 0) => {
         const promise = this.sendMessage(node, outMsg, output, nodeMap);
         sendPromises.push(promise);

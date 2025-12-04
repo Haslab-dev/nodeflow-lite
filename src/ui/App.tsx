@@ -78,8 +78,13 @@ export default function App() {
   const [showNodeModal, setShowNodeModal] = useState(false);
   const [infoLogs, setInfoLogs] = useState<Array<{ timestamp: string; message: string }>>([]);
   const [debugLogs, setDebugLogs] = useState<Array<{ timestamp: string; message: string }>>([]);
-  const [runtimeStatus, setRuntimeStatus] = useState({ http: false, mqtt: false, ws: false, mqttClients: 0, wsClients: 0 });
+  const [runtimeStatus, setRuntimeStatus] = useState({ http: false, mqtt: false, ws: false, mqttClients: 0, wsClients: 0, memory: 0, uptime: 0 });
   const [isDeployed, setIsDeployed] = useState(false);
+  const [metrics, setMetrics] = useState<{
+    executions: { total: number; successful: number; failed: number; avgExecutionTimeMs: number };
+    resources: { memory: { heapUsed: number; rss: number }; uptime: number };
+    workflows: { deployed: number; totalListeners: number };
+  } | null>(null);
   const [rightSidebarTab, setRightSidebarTab] = useState<'info' | 'debug' | 'dashboard'>('debug');
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true);
   const [rightSidebarVisible, setRightSidebarVisible] = useState(true);
@@ -115,16 +120,55 @@ export default function App() {
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/status');
-        const status = await res.json() as { http: boolean; mqtt: boolean; ws: boolean; mqttClients?: number; wsClients?: number; deployed?: boolean; executingNodeId?: string | null };
-        setRuntimeStatus({ http: status.http, mqtt: status.mqtt, ws: status.ws, mqttClients: status.mqttClients || 0, wsClients: status.wsClients || 0 });
+        const status = await res.json() as { 
+          http: boolean; 
+          mqtt: boolean; 
+          ws: boolean; 
+          mqttClients?: number; 
+          wsClients?: number;
+          memory?: number;
+          uptime?: number;
+          deployedWorkflows?: Array<{ id: string; name: string }>; 
+          executingNodeId?: string | null 
+        };
+        setRuntimeStatus({ 
+          http: status.http, 
+          mqtt: status.mqtt, 
+          ws: status.ws, 
+          mqttClients: status.mqttClients || 0, 
+          wsClients: status.wsClients || 0,
+          memory: status.memory || 0,
+          uptime: status.uptime || 0
+        });
+        
         // Update executing node for visual feedback
         if (status.executingNodeId !== undefined) {
           setExecutingNodeId(status.executingNodeId);
         }
+        
+        // Check if current workflow is deployed
+        if (currentWorkflow && status.deployedWorkflows) {
+          const isCurrentDeployed = status.deployedWorkflows.some(w => w.id === currentWorkflow.id);
+          setIsDeployed(isCurrentDeployed);
+        }
       } catch {}
     };
     fetchStatus();
-    const interval = setInterval(fetchStatus, 200); // Poll faster for real-time node execution feedback
+    const interval = setInterval(fetchStatus, 500); // Poll for status updates
+    return () => clearInterval(interval);
+  }, [currentWorkflow]);
+
+  // Fetch metrics less frequently
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch('/api/metrics');
+        const data = await res.json();
+        setMetrics(data);
+      } catch {}
+    };
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000); // Every 5 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -386,12 +430,17 @@ export default function App() {
     }
   };
 
-  // Undeploy - stop listeners
+  // Undeploy - stop listeners for current workflow
   const undeployWorkflow = async () => {
+    if (!currentWorkflow) return;
     try {
       const response = await fetch('/api/workflow/undeploy', { 
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}` 
+        },
+        body: JSON.stringify({ workflowId: currentWorkflow.id })
       });
       if (!response.ok) {
         const error = await response.json();
@@ -411,9 +460,21 @@ export default function App() {
     setIsDeployed(false);
   };
 
-  const handleSelectWorkflow = (workflow: WorkflowDefinition) => {
+  const handleSelectWorkflow = async (workflow: WorkflowDefinition) => {
     setCurrentWorkflow(workflow);
     loadWorkflowToCanvas(workflow);
+    
+    // Check if this workflow is deployed
+    try {
+      const res = await fetch('/api/status');
+      const status = await res.json() as { deployedWorkflows?: Array<{ id: string }> };
+      if (status.deployedWorkflows) {
+        const isCurrentDeployed = status.deployedWorkflows.some(w => w.id === workflow.id);
+        setIsDeployed(isCurrentDeployed);
+      }
+    } catch {
+      setIsDeployed(false);
+    }
   };
 
   const handleCreateProject = (name: string) => {
@@ -899,6 +960,60 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Resource Metrics */}
+                    {metrics && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-700 mb-2">Resource Usage</h3>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Memory (RSS)</span>
+                            <span className="text-xs font-medium text-gray-700">{metrics.resources?.memory?.rss || runtimeStatus.memory} MB</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Heap Used</span>
+                            <span className="text-xs font-medium text-gray-700">{metrics.resources?.memory?.heapUsed || 0} MB</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Uptime</span>
+                            <span className="text-xs font-medium text-gray-700">{Math.floor((metrics.resources?.uptime || runtimeStatus.uptime) / 60)}m {(metrics.resources?.uptime || runtimeStatus.uptime) % 60}s</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Deployed Workflows</span>
+                            <span className="text-xs font-medium text-blue-600">{metrics.workflows?.deployed || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Active Listeners</span>
+                            <span className="text-xs font-medium text-green-600">{metrics.workflows?.totalListeners || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Execution Metrics */}
+                    {metrics && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-700 mb-2">Execution Stats</h3>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Total Executions</span>
+                            <span className="text-xs font-medium text-gray-700">{metrics.executions?.total || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Successful</span>
+                            <span className="text-xs font-medium text-green-600">{metrics.executions?.successful || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Failed</span>
+                            <span className="text-xs font-medium text-red-600">{metrics.executions?.failed || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-xs text-gray-600">Avg Time</span>
+                            <span className="text-xs font-medium text-gray-700">{metrics.executions?.avgExecutionTimeMs || 0} ms</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Current Workflow Info */}
                     {currentWorkflow && (

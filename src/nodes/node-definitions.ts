@@ -431,6 +431,62 @@ return {
   timestamp: Date.now()
 };` }
     ]
+  },
+
+  // HTML Output Node - Like Node-RED UI Template
+  {
+    type: 'html-output',
+    label: 'HTML Output',
+    category: 'output',
+    color: '#f43f5e',
+    inputs: 1,
+    outputs: 0,
+    icon: '🌐',
+    description: 'Serve HTML page with real-time data at /slug/ui',
+    configFields: [
+      { name: 'slug', label: 'URL Slug', type: 'string', default: 'dashboard' },
+      { name: 'title', label: 'Page Title', type: 'string', default: 'Dashboard' },
+      { name: 'html', label: 'HTML Template', type: 'code', language: 'html', default: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; background: #1a1a2e; color: #eee; }
+    .card { background: #16213e; border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
+    .value { font-size: 3rem; font-weight: bold; color: #00d9ff; }
+    .label { color: #888; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>{{title}}</h1>
+  <div class="card">
+    <div class="label">Current Value</div>
+    <div class="value" data-bind="value">--</div>
+  </div>
+  <div class="card">
+    <div class="label">Status</div>
+    <div data-bind="status">Waiting...</div>
+  </div>
+</body>
+</html>` }
+    ]
+  },
+
+  // Interval Node - Sends messages at regular intervals
+  {
+    type: 'interval',
+    label: 'Interval',
+    category: 'input',
+    color: '#22c55e',
+    inputs: 0,
+    outputs: 1,
+    icon: '⏰',
+    description: 'Send messages at regular intervals',
+    configFields: [
+      { name: 'interval', label: 'Interval (ms)', type: 'number', default: 1000 },
+      { name: 'payload', label: 'Payload (JS expression)', type: 'code', language: 'javascript', default: '{ value: Math.random() * 100 }' },
+      { name: 'maxCount', label: 'Max Count (0 = infinite)', type: 'number', default: 0 }
+    ]
   }
 ];
 
